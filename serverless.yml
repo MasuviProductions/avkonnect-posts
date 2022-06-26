@@ -1,6 +1,6 @@
 # serverless.yml
 
-service: node-boilerplate
+service: avkonnect-posts
 
 provider:
     name: aws

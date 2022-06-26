@@ -1,5 +1,6 @@
-import APP from '.';
+import APP from './index';
+import ENV from './constants/env';
 
-APP.listen(3000, (err) => {
+APP.listen(ENV.PORT, (err) => {
     if (err) throw err;
 });
