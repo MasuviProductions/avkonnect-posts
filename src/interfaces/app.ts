@@ -85,3 +85,9 @@ export interface ICreatePostRequest {
 export interface IUpdatePostRequest {
     content: Omit<IPostsContent, 'createdAt'>;
 }
+
+export interface IFeedsSQSEventRecord {
+    eventType: 'generateFeeds';
+    resourceId: string;
+    resourceType: 'post' | 'comment' | 'reaction';
+}

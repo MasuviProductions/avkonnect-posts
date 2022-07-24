@@ -1,8 +1,17 @@
+import { SQS } from 'aws-sdk';
+import ENV from '../../../constants/env';
 import { ErrorCode, ErrorMessage } from '../../../constants/errors';
-import { HttpResponse, ICreatePostRequest, IUpdatePostRequest, RequestHandler } from '../../../interfaces/app';
+import {
+    HttpResponse,
+    ICreatePostRequest,
+    IFeedsSQSEventRecord,
+    IUpdatePostRequest,
+    RequestHandler,
+} from '../../../interfaces/app';
 import { IPost, IPostsContent } from '../../../models/posts';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
+import SQS_QUEUE from '../../../utils/queue';
 
 export const getPost: RequestHandler<{
     Params: { userId: string; postId: string };
@@ -39,6 +48,17 @@ export const createPost: RequestHandler<{
     if (!createdPost) {
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
     }
+
+    const feedsPostEvent: IFeedsSQSEventRecord = {
+        eventType: 'generateFeeds',
+        resourceId: createdPost.id,
+        resourceType: 'post',
+    };
+    const feedsQueueParams: SQS.SendMessageRequest = {
+        MessageBody: JSON.stringify(feedsPostEvent),
+        QueueUrl: ENV.AWS.FEEDS_SQS_URL,
+    };
+    await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
     const response: HttpResponse<IPost> = {
         success: true,
         data: createdPost,
