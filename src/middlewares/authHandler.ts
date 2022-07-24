@@ -4,6 +4,7 @@ import {
     getAuthenticationTokenType,
     getTokenFromApiRequest,
     verfiyAccessToken,
+    verifyBasicToken,
 } from '@masuviproductions/avkonnect-auth/lib';
 import { ErrorCode, ErrorMessage } from '../constants/errors';
 import AVKKONNECT_CORE_SERVICE from '../services/avkonnect-core';
@@ -29,6 +30,12 @@ export const authHandler: preHandlerAsyncHookHandler = async (request) => {
                 throw new HttpError(ErrorMessage.AuthenticationError, 401, ErrorCode.AuthenticationError);
             }
             request.authUser = authUserResponse.data;
+            break;
+        }
+        case AuthenticationToken.Basic: {
+            if (!verifyBasicToken(authToken)) {
+                throw new HttpError(ErrorMessage.AuthenticationError, 401, ErrorCode.AuthenticationError);
+            }
             break;
         }
         default: {
