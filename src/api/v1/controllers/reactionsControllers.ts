@@ -1,6 +1,7 @@
 import { v4 } from 'uuid';
 import { ErrorMessage, ErrorCode } from '../../../constants/errors';
 import { RequestHandler, ICreateReactionRequest, HttpResponse } from '../../../interfaces/app';
+import { IActivity } from '../../../models/activities';
 import { REACTIONS, IReaction } from '../../../models/reactions';
 import { throwErrorIfResourceNotFound } from '../../../utils/db/generic';
 import DB_QUERIES from '../../../utils/db/queries';
@@ -31,6 +32,14 @@ export const createReaction: RequestHandler<{
             resourceType: body.resourceType,
             reaction: body.reaction,
         });
+        const activity = await DB_QUERIES.getActivityByResource(body.resourceId, body.resourceType);
+        const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactions'>> = {
+            reactions: {
+                ...activity.reactions,
+                [body.reaction]: activity.reactions[body.reaction] + 1,
+            },
+        };
+        await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivity);
     } else {
         if (existingReaction.reaction != body.reaction) {
             reaction = await DB_QUERIES.updateReactionTypeForReaction(
@@ -61,6 +70,17 @@ export const deleteReaction: RequestHandler<{
     const existingReaction = await DB_QUERIES.getReactionByIdForUser(reactionId, userId);
     if (existingReaction) {
         await DB_QUERIES.deleteReaction(userId, existingReaction.createdAt);
+        const activity = await DB_QUERIES.getActivityByResource(
+            existingReaction.resourceId,
+            existingReaction.resourceType
+        );
+        const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactions'>> = {
+            reactions: {
+                ...activity.reactions,
+                [existingReaction.reaction]: activity.reactions[existingReaction.reaction] - 1,
+            },
+        };
+        await DB_QUERIES.updateActivity(existingReaction.resourceId, existingReaction.resourceType, updatedActivity);
     }
     const response: HttpResponse = {
         success: true,

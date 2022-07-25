@@ -26,6 +26,23 @@ export const createComment: RequestHandler<{
     if (!createdComment) {
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
     }
+    const createdActivity = await DB_QUERIES.createActivity({
+        id: v4(),
+        resourceId: createdComment.id,
+        resourceType: 'comment',
+        reactions: {
+            like: 0,
+            support: 0,
+            sad: 0,
+            love: 0,
+            laugh: 0,
+        },
+        commentsCount: 0,
+    });
+    if (!createdActivity) {
+        throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
+    }
+
     const response: HttpResponse<IComment> = {
         success: true,
         data: createdComment,
