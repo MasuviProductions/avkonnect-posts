@@ -53,6 +53,7 @@
         "dynamoose": "^2.8.5",
         "fastify": "^3.27.2",
         "mongoose": "^6.3.6",
+        "mongoose-lean-virtuals": "^0.9.1",
         "serverless": "^3.4.0",
         "serverless-http": "^2.7.0",
         "uuid": "^8.3.2"

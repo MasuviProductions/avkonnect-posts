@@ -1,17 +1,29 @@
 import { SQS } from 'aws-sdk';
+import { v4 } from 'uuid';
 import ENV from '../../../constants/env';
 import { ErrorCode, ErrorMessage } from '../../../constants/errors';
 import {
     HttpResponse,
     ICreatePostRequest,
     IFeedsSQSEventRecord,
+    IPostInfoUserActivity,
+    IPostsInfo,
+    IPostsInfoRequest,
+    IPostsInfoResponse,
     IUpdatePostRequest,
     RequestHandler,
 } from '../../../interfaces/app';
+import { ICommentContent } from '../../../models/comments';
 import { IPost, IPostsContent } from '../../../models/posts';
+import { IReaction } from '../../../models/reactions';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
 import SQS_QUEUE from '../../../utils/queue';
+import {
+    transformActivitiesListToResourceIdToActivityMap,
+    transformCommentsListToResourceIdToCommentMap,
+    transformReactionsListToResourceIdToReactionMap,
+} from '../../../utils/transformers';
 
 export const getPost: RequestHandler<{
     Params: { userId: string; postId: string };
@@ -26,6 +38,54 @@ export const getPost: RequestHandler<{
     const response: HttpResponse<IPost> = {
         success: true,
         data: post,
+    };
+    reply.status(200).send(response);
+};
+
+export const getPostsInfo: RequestHandler<{
+    Body: IPostsInfoRequest;
+}> = async (request, reply) => {
+    const { body } = request;
+    const postIds = new Set(body.postIds);
+    const userId = body.userId;
+    const posts = await DB_QUERIES.getPostsByIds(postIds);
+    if (!posts) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+    const postsActivities = await DB_QUERIES.getActivitiesByResourceIds(postIds, 'post');
+    const postIdToActivitiesMap = transformActivitiesListToResourceIdToActivityMap(postsActivities);
+    let userReactions: Record<string, IReaction>;
+    let userComments: Record<string, Array<ICommentContent>>;
+
+    if (userId) {
+        const postReactions = await DB_QUERIES.getReactionsByResourceIdsForUser(userId, postIds, 'post');
+        userReactions = transformReactionsListToResourceIdToReactionMap(postReactions);
+
+        const postComments = await DB_QUERIES.getCommentsByResourceIdsForUser(userId, postIds, 'post');
+        userComments = transformCommentsListToResourceIdToCommentMap(postComments);
+    }
+
+    const postsInfo: Array<IPostsInfo> = [];
+    posts.forEach((post) => {
+        const activity = postIdToActivitiesMap[post.id];
+        let userPostInfoActivity: IPostInfoUserActivity | undefined = undefined;
+        const userPostReaction = userReactions?.[post.id]?.reaction;
+        const userPostComments = userComments?.[post.id];
+        if (userPostReaction || userPostComments) {
+            userPostInfoActivity = { userReaction: userPostReaction, userComments: userPostComments };
+        }
+        const postInfo: IPostsInfo = {
+            ...post,
+            reactionsCount: activity.reactions,
+            commentsCount: activity.commentsCount,
+            userActivity: userPostInfoActivity,
+        };
+        postsInfo.push(postInfo);
+    });
+
+    const response: HttpResponse<IPostsInfoResponse> = {
+        success: true,
+        data: postsInfo,
     };
     reply.status(200).send(response);
 };
@@ -46,6 +106,23 @@ export const createPost: RequestHandler<{
     };
     const createdPost = await DB_QUERIES.createPost(post);
     if (!createdPost) {
+        throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
+    }
+
+    const createdActivity = await DB_QUERIES.createActivity({
+        id: v4(),
+        resourceId: createdPost.id,
+        resourceType: 'post',
+        reactions: {
+            like: 0,
+            support: 0,
+            sad: 0,
+            love: 0,
+            laugh: 0,
+        },
+        commentsCount: 0,
+    });
+    if (!createdActivity) {
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
     }
 

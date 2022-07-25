@@ -7,6 +7,7 @@ import {
     getPostReactions,
     updatePost,
     getPostComments,
+    getPostsInfo,
 } from '../controllers/postsControllers';
 
 const initializePostsRoutes = (
@@ -14,6 +15,7 @@ const initializePostsRoutes = (
     _opts?: FastifyRegisterOptions<FastifyPluginOptions>,
     done?: () => void
 ) => {
+    fastify.post('/posts/getPostsInfo', { preHandler: [authHandler] }, getPostsInfo);
     fastify.get('/posts/:postId', { preHandler: [authHandler] }, getPost);
     fastify.post('/posts', { preHandler: [authHandler] }, createPost);
     fastify.patch('/posts/:postId', { preHandler: [authHandler] }, updatePost);

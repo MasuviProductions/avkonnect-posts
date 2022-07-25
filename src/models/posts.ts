@@ -1,4 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
+import mongooseLeanVirtuals from 'mongoose-lean-virtuals';
 import { TABLE } from '../constants/db';
 
 export interface IPostsContent {
@@ -55,6 +56,8 @@ PostsSchema.set('toObject', {
         delete ret._id;
     },
 });
+
+PostsSchema.plugin(mongooseLeanVirtuals);
 
 const Post = mongoose.model<IPost>(TABLE.POSTS, PostsSchema);
 

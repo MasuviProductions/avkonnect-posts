@@ -11,7 +11,7 @@ import {
 } from 'fastify';
 import { ReplyGenericInterface } from 'fastify/types/reply';
 import { ICommentContent } from '../models/comments';
-import { IPostsContent } from '../models/posts';
+import { IPost, IPostsContent } from '../models/posts';
 import { IReactionType, IResourceType } from '../models/reactions';
 
 interface FastifyRouteGenericInterface extends RequestGenericInterface, ReplyGenericInterface {}
@@ -85,6 +85,24 @@ export interface ICreatePostRequest {
 export interface IUpdatePostRequest {
     content: Omit<IPostsContent, 'createdAt'>;
 }
+
+export interface IPostInfoUserActivity {
+    userComments?: ICommentContent[];
+    userReaction?: IReactionType;
+}
+
+export interface IPostsInfo extends IPost {
+    reactionsCount: Record<IReactionType, number>;
+    commentsCount: number;
+    userActivity?: IPostInfoUserActivity;
+}
+
+export interface IPostsInfoRequest {
+    userId?: string;
+    postIds: Array<string>;
+}
+
+export type IPostsInfoResponse = Array<IPostsInfo>;
 
 export interface IFeedsSQSEventRecord {
     eventType: 'generateFeeds';
