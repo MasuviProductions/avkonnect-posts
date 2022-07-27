@@ -75,7 +75,13 @@ export const getPostsInfo: RequestHandler<{
             userPostInfoActivity = { userReaction: userPostReaction, userComments: userPostComments };
         }
         const postInfo: IPostsInfo = {
-            ...post,
+            postId: post.id,
+            createdAt: post.createdAt,
+            updatedAt: post.updatedAt,
+            userId: post.userId,
+            contents: post.contents,
+            visibleOnlyToConnections: post.visibleOnlyToConnections,
+            commentsOnlyByConnections: post.commentsOnlyByConnections,
             reactionsCount: activity.reactions,
             commentsCount: activity.commentsCount,
             userActivity: userPostInfoActivity,
