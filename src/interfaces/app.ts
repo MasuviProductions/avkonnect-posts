@@ -91,7 +91,8 @@ export interface IPostInfoUserActivity {
     userReaction?: IReactionType;
 }
 
-export interface IPostsInfo extends IPost {
+export interface IPostsInfo extends Omit<IPost, 'id'> {
+    postId: string;
     reactionsCount: Record<IReactionType, number>;
     commentsCount: number;
     userActivity?: IPostInfoUserActivity;
