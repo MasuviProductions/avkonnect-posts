@@ -50,6 +50,23 @@ export const createComment: RequestHandler<{
     reply.status(200).send(response);
 };
 
+export const getComment: RequestHandler<{
+    Params: { commentId: string };
+}> = async (request, reply) => {
+    const {
+        params: { commentId },
+    } = request;
+    const comment = await DB_QUERIES.getCommentById(commentId);
+    if (!comment) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+    const response: HttpResponse<IComment> = {
+        success: true,
+        data: comment,
+    };
+    reply.status(200).send(response);
+};
+
 export const updateComment: RequestHandler<{
     Params: { commentId: string };
     Body: IUpdateCommentRequest;
