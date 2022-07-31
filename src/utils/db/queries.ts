@@ -3,6 +3,10 @@ import { v4 } from 'uuid';
 import Reaction, { IReaction, IReactionType, IResourceType } from '../../models/reactions';
 import Comment, { IComment } from '../../models/comments';
 import Activity, { IActivity } from '../../models/activities';
+import DB_HELPERS from './helpers';
+import { Query } from 'dynamoose/dist/DocumentRetriever';
+import { HttpDynamoDBResponsePagination, IDynamooseDocument } from '../../interfaces/app';
+import { ObjectType } from 'dynamoose/dist/General';
 
 const createPost = async (post: Partial<IPost>): Promise<IPost | undefined> => {
     const createdPost = await Post.create({ ...post, _id: v4() });
@@ -61,29 +65,62 @@ const updateComment = async (
 
 const getCommentsForResource = async (
     resourceType: IResourceType,
-    resourceId: string
-): Promise<IComment[] | undefined> => {
-    const comments = Comment.query('resourceId')
+    resourceId: string,
+    limit: number,
+    nextSearchStartFromKey?: ObjectType
+): Promise<{ documents: Array<Partial<IComment>> | undefined; dDBPagination: HttpDynamoDBResponsePagination }> => {
+    const commentsQuery = Comment.query('resourceId')
         .eq(resourceId)
         .and()
         .where('resourceType')
         .eq(resourceType)
-        .using('resourceIndex')
-        .exec();
-    return comments;
+        .using('resourceIndex');
+    const paginatedDocuments = await DB_HELPERS.fetchDynamoDBPaginatedDocuments<IComment>(
+        commentsQuery as Query<IDynamooseDocument<IComment>>,
+        [],
+        limit,
+        ['userId', 'createdAt', 'resourceId', 'resourceType'],
+        nextSearchStartFromKey
+    );
+
+    if (paginatedDocuments.dDBPagination.nextSearchStartFromKey) {
+        paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt = (
+            paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt as Date
+        ).getTime();
+    }
+    return paginatedDocuments;
 };
 
-const getCommentsByResourceIdsForUser = (userId: string, resourceIdsList: Set<string>, resourceType: IResourceType) => {
-    const comments = Comment.query('userId')
+const getCommentsByResourceIdsForUser = async (
+    userId: string,
+    resourceIdsList: Set<string>,
+    resourceType: IResourceType,
+    limit: number,
+    nextSearchStartFromKey?: ObjectType
+): Promise<{ documents: Array<Partial<IComment>> | undefined; dDBPagination: HttpDynamoDBResponsePagination }> => {
+    const commentsQuery = Comment.query('userId')
         .eq(userId)
         .and()
         .where('resourceId')
         .in(Array.from(resourceIdsList))
         .and()
         .where('resourceType')
-        .eq(resourceType)
-        .exec();
-    return comments;
+        .eq(resourceType);
+
+    const paginatedDocuments = await DB_HELPERS.fetchDynamoDBPaginatedDocuments<IComment>(
+        commentsQuery,
+        [],
+        limit,
+        ['userId', 'createdAt', 'resourceId', 'resourceType'],
+        nextSearchStartFromKey
+    );
+
+    if (paginatedDocuments.dDBPagination.nextSearchStartFromKey) {
+        paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt = (
+            paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt as Date
+        ).getTime();
+    }
+    return paginatedDocuments;
 };
 
 const deleteComment = async (userId: string, createdAt: Date): Promise<void> => {
@@ -98,21 +135,42 @@ const createReaction = async (reaction: IReaction): Promise<IReaction | undefine
 
 const getReactionsForResource = async (
     resourceType: IResourceType,
-    resourceId: string
-): Promise<IReaction[] | undefined> => {
-    const reactions = Reaction.query('resourceId')
-        .eq(resourceId)
-        .and()
-        .where('resourceType')
-        .eq(resourceType)
-        .using('resourceIndex')
-        .exec();
-    return reactions;
+    resourceId: string,
+    reactionType: IReactionType | undefined,
+    limit: number,
+    nextSearchStartFromKey?: ObjectType
+): Promise<{ documents: Array<Partial<IReaction>> | undefined; dDBPagination: HttpDynamoDBResponsePagination }> => {
+    let reactionsQuery = Reaction.query('resourceId').eq(resourceId).and().where('resourceType').eq(resourceType);
+
+    if (reactionType) {
+        reactionsQuery = reactionsQuery.and().where('reaction').eq(reactionType);
+    }
+
+    const paginatedDocuments = await DB_HELPERS.fetchDynamoDBPaginatedDocuments<IReaction>(
+        reactionsQuery.using('resourceIndex') as Query<IDynamooseDocument<IReaction>>,
+        [],
+        limit,
+        ['userId', 'createdAt', 'resourceId', 'resourceType'],
+        nextSearchStartFromKey
+    );
+
+    if (paginatedDocuments.dDBPagination.nextSearchStartFromKey) {
+        paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt = (
+            paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt as Date
+        ).getTime();
+    }
+
+    return paginatedDocuments;
 };
 
 const getReactionByIdForUser = async (reactionId: string, userId: string): Promise<IReaction | undefined> => {
     const reaction = await Reaction.query('userId').eq(userId).and().where('id').eq(reactionId).exec();
     return reaction?.[0];
+};
+
+const getReaction = async (reactionId: string): Promise<IReaction | undefined> => {
+    const reaction = await Reaction.scan('id').eq(reactionId).using('reactionIdIndex').exec();
+    return reaction[0];
 };
 
 const updateReactionTypeForReaction = async (
@@ -218,6 +276,7 @@ const DB_QUERIES = {
     deleteComment,
     updateComment,
     getReactionByIdForUser,
+    getReaction,
     deleteReaction,
     getReactionsForResource,
     createActivity,

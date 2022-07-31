@@ -1,4 +1,5 @@
 import { SQS } from 'aws-sdk';
+import { ObjectType } from 'dynamoose/dist/General';
 import { v4 } from 'uuid';
 import ENV from '../../../constants/env';
 import { ErrorCode, ErrorMessage } from '../../../constants/errors';
@@ -7,15 +8,20 @@ import {
     ICreatePostRequest,
     IFeedsSQSEventRecord,
     IPostInfoUserActivity,
+    IPostReactionModel,
+    IPostReactionsResponse,
+    IPostCommentsResponse,
+    IPostCommentModel,
     IPostsInfo,
     IPostsInfoRequest,
     IPostsInfoResponse,
     IUpdatePostRequest,
     RequestHandler,
 } from '../../../interfaces/app';
-import { ICommentContent } from '../../../models/comments';
+import { IComment, ICommentContent } from '../../../models/comments';
 import { IPost, IPostsContent } from '../../../models/posts';
-import { IReaction } from '../../../models/reactions';
+import { IReaction, IReactionType } from '../../../models/reactions';
+import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
 import SQS_QUEUE from '../../../utils/queue';
@@ -23,6 +29,7 @@ import {
     transformActivitiesListToResourceIdToActivityMap,
     transformCommentsListToResourceIdToCommentMap,
     transformReactionsListToResourceIdToReactionMap,
+    transformUsersListToUserIdUserMap,
 } from '../../../utils/transformers';
 
 export const getPost: RequestHandler<{
@@ -61,8 +68,8 @@ export const getPostsInfo: RequestHandler<{
         const postReactions = await DB_QUERIES.getReactionsByResourceIdsForUser(userId, postIds, 'post');
         userReactions = transformReactionsListToResourceIdToReactionMap(postReactions);
 
-        const postComments = await DB_QUERIES.getCommentsByResourceIdsForUser(userId, postIds, 'post');
-        userComments = transformCommentsListToResourceIdToCommentMap(postComments);
+        const postComments = await DB_QUERIES.getCommentsByResourceIdsForUser(userId, postIds, 'post', 5);
+        userComments = transformCommentsListToResourceIdToCommentMap(postComments.documents as Array<IComment>);
     }
 
     const postsInfo: Array<IPostsInfo> = [];
@@ -207,28 +214,71 @@ export const deletePost: RequestHandler<{
 
 export const getPostReactions: RequestHandler<{
     Params: { postId: string };
+    Querystring: { reaction: IReactionType; limit: number; nextSearchStartFromKey: string };
 }> = async (request, reply) => {
     const {
         params: { postId },
+        query: { reaction, limit, nextSearchStartFromKey },
     } = request;
-    const reactions = await DB_QUERIES.getReactionsForResource('post', postId);
-    const response: HttpResponse = {
+    const paginatedDocuments = await DB_QUERIES.getReactionsForResource(
+        'post',
+        postId,
+        reaction,
+        limit,
+        nextSearchStartFromKey ? (JSON.parse(decodeURI(nextSearchStartFromKey)) as ObjectType) : undefined
+    );
+    const relatedUserIds = new Set<string>();
+    paginatedDocuments.documents?.forEach((reaction) => {
+        relatedUserIds.add(reaction.userId as string);
+    });
+    const relatedUsers = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, Array.from(relatedUserIds));
+    const relatedUserIdUserMap = transformUsersListToUserIdUserMap(relatedUsers.data || []);
+    const postReactions = paginatedDocuments.documents?.map(
+        (reaction) =>
+            ({
+                ...reaction,
+                relatedUser: relatedUserIdUserMap[reaction.userId as string],
+            } as IPostReactionModel)
+    );
+    const response: HttpResponse<IPostReactionsResponse> = {
         success: true,
-        data: reactions || [],
+        data: postReactions,
+        dDBPagination: paginatedDocuments.dDBPagination,
     };
     reply.status(200).send(response);
 };
 
 export const getPostComments: RequestHandler<{
     Params: { postId: string };
+    Querystring: { limit: number; nextSearchStartFromKey: string };
 }> = async (request, reply) => {
     const {
         params: { postId },
+        query: { limit, nextSearchStartFromKey },
     } = request;
-    const comments = await DB_QUERIES.getCommentsForResource('post', postId);
-    const response: HttpResponse = {
+    const paginatedDocuments = await DB_QUERIES.getCommentsForResource(
+        'post',
+        postId,
+        limit,
+        nextSearchStartFromKey ? (JSON.parse(decodeURI(nextSearchStartFromKey)) as ObjectType) : undefined
+    );
+    const relatedUserIds = new Set<string>();
+    paginatedDocuments.documents?.forEach((comment) => {
+        relatedUserIds.add(comment.userId as string);
+    });
+    const relatedUsers = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, Array.from(relatedUserIds));
+    const relatedUserIdUserMap = transformUsersListToUserIdUserMap(relatedUsers.data || []);
+    const postComments = paginatedDocuments.documents?.map(
+        (comment) =>
+            ({
+                ...comment,
+                relatedUser: relatedUserIdUserMap[comment.userId as string],
+            } as IPostCommentModel)
+    );
+    const response: HttpResponse<IPostCommentsResponse> = {
         success: true,
-        data: comments || [],
+        data: postComments,
+        dDBPagination: paginatedDocuments.dDBPagination,
     };
     reply.status(200).send(response);
 };

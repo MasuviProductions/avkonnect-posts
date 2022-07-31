@@ -1,11 +1,21 @@
+import { SQS } from 'aws-sdk';
+import { ObjectType } from 'dynamoose/dist/General';
 import { v4 } from 'uuid';
+import ENV from '../../../constants/env';
 import { ErrorMessage, ErrorCode } from '../../../constants/errors';
-import { RequestHandler, ICreateCommentRequest, HttpResponse, IUpdateCommentRequest } from '../../../interfaces/app';
+import {
+    RequestHandler,
+    ICreateCommentRequest,
+    HttpResponse,
+    IUpdateCommentRequest,
+    IFeedsSQSEventRecord,
+} from '../../../interfaces/app';
 import { IComment, ICommentContent } from '../../../models/comments';
 import { IPost } from '../../../models/posts';
 import { throwErrorIfResourceNotFound } from '../../../utils/db/generic';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
+import SQS_QUEUE from '../../../utils/queue';
 
 export const createComment: RequestHandler<{
     Body: ICreateCommentRequest;
@@ -42,10 +52,38 @@ export const createComment: RequestHandler<{
     if (!createdActivity) {
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
     }
-
+    if (createdComment.resourceType === 'post') {
+        const feedsCommentEvent: IFeedsSQSEventRecord = {
+            eventType: 'generateFeeds',
+            resourceId: createdComment.id,
+            resourceType: 'comment',
+        };
+        const feedsQueueParams: SQS.SendMessageRequest = {
+            MessageBody: JSON.stringify(feedsCommentEvent),
+            QueueUrl: ENV.AWS.FEEDS_SQS_URL,
+        };
+        await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
+    }
     const response: HttpResponse<IComment> = {
         success: true,
         data: createdComment,
+    };
+    reply.status(200).send(response);
+};
+
+export const getComment: RequestHandler<{
+    Params: { commentId: string };
+}> = async (request, reply) => {
+    const {
+        params: { commentId },
+    } = request;
+    const comment = await DB_QUERIES.getCommentById(commentId);
+    if (!comment) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+    const response: HttpResponse<IComment> = {
+        success: true,
+        data: comment,
     };
     reply.status(200).send(response);
 };
@@ -113,11 +151,18 @@ export const deleteComment: RequestHandler<{
 
 export const getCommentComments: RequestHandler<{
     Params: { commentId: string };
+    Querystring: { limit: number; nextSearchStartFromKey: string };
 }> = async (request, reply) => {
     const {
         params: { commentId },
+        query: { limit, nextSearchStartFromKey },
     } = request;
-    const comments = await DB_QUERIES.getCommentsForResource('comment', commentId);
+    const comments = await DB_QUERIES.getCommentsForResource(
+        'comment',
+        commentId,
+        limit,
+        nextSearchStartFromKey ? (JSON.parse(decodeURI(nextSearchStartFromKey)) as ObjectType) : undefined
+    );
     const response: HttpResponse = {
         success: true,
         data: comments || [],
