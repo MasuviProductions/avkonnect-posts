@@ -63,11 +63,9 @@ export const getReaction: RequestHandler<{
     Params: { reactionId: string };
 }> = async (request, reply) => {
     const {
-        authUser,
         params: { reactionId },
     } = request;
-    const userId = authUser?.id as string;
-    const reaction = await DB_QUERIES.getReactionByIdForUser(reactionId, userId);
+    const reaction = await DB_QUERIES.getReaction(reactionId);
     if (!reaction) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }

@@ -115,6 +115,11 @@ const getReactionByIdForUser = async (reactionId: string, userId: string): Promi
     return reaction?.[0];
 };
 
+const getReaction = async (reactionId: string): Promise<IReaction | undefined> => {
+    const reaction = await Reaction.scan('id').eq(reactionId).using('reactionIdIndex').exec();
+    return reaction;
+};
+
 const updateReactionTypeForReaction = async (
     userId: string,
     createdAt: Date,
@@ -218,6 +223,7 @@ const DB_QUERIES = {
     deleteComment,
     updateComment,
     getReactionByIdForUser,
+    getReaction,
     deleteReaction,
     getReactionsForResource,
     createActivity,
