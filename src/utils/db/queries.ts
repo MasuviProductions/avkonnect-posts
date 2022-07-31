@@ -117,7 +117,7 @@ const getReactionByIdForUser = async (reactionId: string, userId: string): Promi
 
 const getReaction = async (reactionId: string): Promise<IReaction | undefined> => {
     const reaction = await Reaction.scan('id').eq(reactionId).using('reactionIdIndex').exec();
-    return reaction;
+    return reaction[0];
 };
 
 const updateReactionTypeForReaction = async (

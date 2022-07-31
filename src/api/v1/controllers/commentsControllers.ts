@@ -1,11 +1,20 @@
+import { SQS } from 'aws-sdk';
 import { v4 } from 'uuid';
+import ENV from '../../../constants/env';
 import { ErrorMessage, ErrorCode } from '../../../constants/errors';
-import { RequestHandler, ICreateCommentRequest, HttpResponse, IUpdateCommentRequest } from '../../../interfaces/app';
+import {
+    RequestHandler,
+    ICreateCommentRequest,
+    HttpResponse,
+    IUpdateCommentRequest,
+    IFeedsSQSEventRecord,
+} from '../../../interfaces/app';
 import { IComment, ICommentContent } from '../../../models/comments';
 import { IPost } from '../../../models/posts';
 import { throwErrorIfResourceNotFound } from '../../../utils/db/generic';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
+import SQS_QUEUE from '../../../utils/queue';
 
 export const createComment: RequestHandler<{
     Body: ICreateCommentRequest;
@@ -42,7 +51,18 @@ export const createComment: RequestHandler<{
     if (!createdActivity) {
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
     }
-
+    if (createdComment.resourceType === 'post') {
+        const feedsCommentEvent: IFeedsSQSEventRecord = {
+            eventType: 'generateFeeds',
+            resourceId: createdComment.id,
+            resourceType: 'comment',
+        };
+        const feedsQueueParams: SQS.SendMessageRequest = {
+            MessageBody: JSON.stringify(feedsCommentEvent),
+            QueueUrl: ENV.AWS.FEEDS_SQS_URL,
+        };
+        await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
+    }
     const response: HttpResponse<IComment> = {
         success: true,
         data: createdComment,

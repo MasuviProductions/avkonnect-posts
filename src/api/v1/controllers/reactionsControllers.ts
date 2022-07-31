@@ -1,11 +1,14 @@
+import { SQS } from 'aws-sdk';
 import { v4 } from 'uuid';
+import ENV from '../../../constants/env';
 import { ErrorMessage, ErrorCode } from '../../../constants/errors';
-import { RequestHandler, ICreateReactionRequest, HttpResponse } from '../../../interfaces/app';
+import { RequestHandler, ICreateReactionRequest, HttpResponse, IFeedsSQSEventRecord } from '../../../interfaces/app';
 import { IActivity } from '../../../models/activities';
 import { REACTIONS, IReaction } from '../../../models/reactions';
 import { throwErrorIfResourceNotFound } from '../../../utils/db/generic';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
+import SQS_QUEUE from '../../../utils/queue';
 
 export const createReaction: RequestHandler<{
     Body: ICreateReactionRequest;
@@ -32,6 +35,9 @@ export const createReaction: RequestHandler<{
             resourceType: body.resourceType,
             reaction: body.reaction,
         });
+        if (!reaction) {
+            throw new HttpError(ErrorMessage.InvalidReactionTypeError, 400, ErrorCode.InputError);
+        }
         const activity = await DB_QUERIES.getActivityByResource(body.resourceId, body.resourceType);
         const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactions'>> = {
             reactions: {
@@ -40,6 +46,16 @@ export const createReaction: RequestHandler<{
             },
         };
         await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivity);
+        const feedsReactionEvent: IFeedsSQSEventRecord = {
+            eventType: 'generateFeeds',
+            resourceId: reaction.id,
+            resourceType: 'reaction',
+        };
+        const feedsQueueParams: SQS.SendMessageRequest = {
+            MessageBody: JSON.stringify(feedsReactionEvent),
+            QueueUrl: ENV.AWS.FEEDS_SQS_URL,
+        };
+        await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
     } else {
         if (existingReaction.reaction != body.reaction) {
             reaction = await DB_QUERIES.updateReactionTypeForReaction(
