@@ -1,12 +1,13 @@
 import { FastifyInstance, FastifyPluginOptions, FastifyRegisterOptions } from 'fastify';
 import { authHandler } from '../../../middlewares/authHandler';
-import { createReaction, deleteReaction } from '../controllers/reactionsControllers';
+import { createReaction, deleteReaction, getReaction } from '../controllers/reactionsControllers';
 
 const initializeReactionsRoutes = (
     fastify: FastifyInstance,
     _opts?: FastifyRegisterOptions<FastifyPluginOptions>,
     done?: () => void
 ) => {
+    fastify.get('/reactions/:reactionId', { preHandler: [authHandler] }, getReaction);
     fastify.post('/reactions', { preHandler: [authHandler] }, createReaction);
     fastify.delete('/reactions/:reactionId', { preHandler: [authHandler] }, deleteReaction);
 

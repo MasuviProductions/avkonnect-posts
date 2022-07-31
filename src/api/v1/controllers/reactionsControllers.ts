@@ -59,6 +59,25 @@ export const createReaction: RequestHandler<{
     reply.status(200).send(response);
 };
 
+export const getReaction: RequestHandler<{
+    Params: { reactionId: string };
+}> = async (request, reply) => {
+    const {
+        authUser,
+        params: { reactionId },
+    } = request;
+    const userId = authUser?.id as string;
+    const reaction = await DB_QUERIES.getReactionByIdForUser(reactionId, userId);
+    if (!reaction) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+    const response: HttpResponse<IReaction> = {
+        success: true,
+        data: reaction,
+    };
+    reply.status(200).send(response);
+};
+
 export const deleteReaction: RequestHandler<{
     Params: { reactionId: string };
 }> = async (request, reply) => {
