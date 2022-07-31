@@ -10,9 +10,10 @@ import {
     preHandlerAsyncHookHandler,
 } from 'fastify';
 import { ReplyGenericInterface } from 'fastify/types/reply';
-import { ICommentContent } from '../models/comments';
+import { IComment, ICommentContent } from '../models/comments';
 import { IPost, IPostsContent } from '../models/posts';
-import { IReactionType, IResourceType } from '../models/reactions';
+import { IReaction, IReactionType, IResourceType } from '../models/reactions';
+import { IUserApiModel } from './api';
 
 interface FastifyRouteGenericInterface extends RequestGenericInterface, ReplyGenericInterface {}
 
@@ -110,3 +111,13 @@ export interface IFeedsSQSEventRecord {
     resourceId: string;
     resourceType: 'post' | 'comment' | 'reaction';
 }
+
+export interface IPostReactionModel extends IReaction {
+    relatedUser: IUserApiModel;
+}
+export type IPostReactionsResponse = Array<IPostReactionModel>;
+
+export interface IPostCommentModel extends IComment {
+    relatedUser: IUserApiModel;
+}
+export type IPostCommentsResponse = Array<IPostCommentModel>;

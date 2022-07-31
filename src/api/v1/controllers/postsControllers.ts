@@ -8,6 +8,10 @@ import {
     ICreatePostRequest,
     IFeedsSQSEventRecord,
     IPostInfoUserActivity,
+    IPostReactionModel,
+    IPostReactionsResponse,
+    IPostCommentsResponse,
+    IPostCommentModel,
     IPostsInfo,
     IPostsInfoRequest,
     IPostsInfoResponse,
@@ -17,6 +21,7 @@ import {
 import { IComment, ICommentContent } from '../../../models/comments';
 import { IPost, IPostsContent } from '../../../models/posts';
 import { IReaction, IReactionType } from '../../../models/reactions';
+import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
 import SQS_QUEUE from '../../../utils/queue';
@@ -24,6 +29,7 @@ import {
     transformActivitiesListToResourceIdToActivityMap,
     transformCommentsListToResourceIdToCommentMap,
     transformReactionsListToResourceIdToReactionMap,
+    transformUsersListToUserIdUserMap,
 } from '../../../utils/transformers';
 
 export const getPost: RequestHandler<{
@@ -221,9 +227,22 @@ export const getPostReactions: RequestHandler<{
         limit,
         nextSearchStartFromKey ? (JSON.parse(decodeURI(nextSearchStartFromKey)) as ObjectType) : undefined
     );
-    const response: HttpResponse<Array<Partial<IReaction>>> = {
+    const relatedUserIds = new Set<string>();
+    paginatedDocuments.documents?.forEach((reaction) => {
+        relatedUserIds.add(reaction.userId as string);
+    });
+    const relatedUsers = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, Array.from(relatedUserIds));
+    const relatedUserIdUserMap = transformUsersListToUserIdUserMap(relatedUsers.data || []);
+    const postReactions = paginatedDocuments.documents?.map(
+        (reaction) =>
+            ({
+                ...reaction,
+                relatedUser: relatedUserIdUserMap[reaction.userId as string],
+            } as IPostReactionModel)
+    );
+    const response: HttpResponse<IPostReactionsResponse> = {
         success: true,
-        data: paginatedDocuments.documents,
+        data: postReactions,
         dDBPagination: paginatedDocuments.dDBPagination,
     };
     reply.status(200).send(response);
@@ -243,9 +262,22 @@ export const getPostComments: RequestHandler<{
         limit,
         nextSearchStartFromKey ? (JSON.parse(decodeURI(nextSearchStartFromKey)) as ObjectType) : undefined
     );
-    const response: HttpResponse = {
+    const relatedUserIds = new Set<string>();
+    paginatedDocuments.documents?.forEach((comment) => {
+        relatedUserIds.add(comment.userId as string);
+    });
+    const relatedUsers = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, Array.from(relatedUserIds));
+    const relatedUserIdUserMap = transformUsersListToUserIdUserMap(relatedUsers.data || []);
+    const postComments = paginatedDocuments.documents?.map(
+        (comment) =>
+            ({
+                ...comment,
+                relatedUser: relatedUserIdUserMap[comment.userId as string],
+            } as IPostCommentModel)
+    );
+    const response: HttpResponse<IPostCommentsResponse> = {
         success: true,
-        data: paginatedDocuments.documents,
+        data: postComments,
         dDBPagination: paginatedDocuments.dDBPagination,
     };
     reply.status(200).send(response);

@@ -1,3 +1,4 @@
+import { IUserApiModel } from '../interfaces/api';
 import { IActivity } from '../models/activities';
 import { IComment, ICommentContent } from '../models/comments';
 import { IReaction } from '../models/reactions';
@@ -33,4 +34,14 @@ export const transformCommentsListToResourceIdToCommentMap = (
         ];
     });
     return commentsMap;
+};
+
+export const transformUsersListToUserIdUserMap = (
+    users: Array<Partial<IUserApiModel>>
+): Record<string, Partial<IUserApiModel>> => {
+    const userIdUsersMap: Record<string, Partial<IUserApiModel>> = {};
+    users.forEach((user) => {
+        userIdUsersMap[user.id as string] = user;
+    });
+    return userIdUsersMap;
 };
