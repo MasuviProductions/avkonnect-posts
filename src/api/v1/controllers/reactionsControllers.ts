@@ -46,16 +46,18 @@ export const createReaction: RequestHandler<{
             },
         };
         await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivity);
-        const feedsReactionEvent: IFeedsSQSEventRecord = {
-            eventType: 'generateFeeds',
-            resourceId: reaction.id,
-            resourceType: 'reaction',
-        };
-        const feedsQueueParams: SQS.SendMessageRequest = {
-            MessageBody: JSON.stringify(feedsReactionEvent),
-            QueueUrl: ENV.AWS.FEEDS_SQS_URL,
-        };
-        await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
+        if (reaction.resourceType === 'post') {
+            const feedsReactionEvent: IFeedsSQSEventRecord = {
+                eventType: 'generateFeeds',
+                resourceId: reaction.id,
+                resourceType: 'reaction',
+            };
+            const feedsQueueParams: SQS.SendMessageRequest = {
+                MessageBody: JSON.stringify(feedsReactionEvent),
+                QueueUrl: ENV.AWS.FEEDS_SQS_URL,
+            };
+            await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
+        }
     } else {
         if (existingReaction.reaction != body.reaction) {
             reaction = await DB_QUERIES.updateReactionTypeForReaction(

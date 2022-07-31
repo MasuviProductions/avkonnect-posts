@@ -1,4 +1,5 @@
 import { SQS } from 'aws-sdk';
+import { ObjectType } from 'dynamoose/dist/General';
 import { v4 } from 'uuid';
 import ENV from '../../../constants/env';
 import { ErrorCode, ErrorMessage } from '../../../constants/errors';
@@ -13,9 +14,9 @@ import {
     IUpdatePostRequest,
     RequestHandler,
 } from '../../../interfaces/app';
-import { ICommentContent } from '../../../models/comments';
+import { IComment, ICommentContent } from '../../../models/comments';
 import { IPost, IPostsContent } from '../../../models/posts';
-import { IReaction } from '../../../models/reactions';
+import { IReaction, IReactionType } from '../../../models/reactions';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
 import SQS_QUEUE from '../../../utils/queue';
@@ -61,8 +62,8 @@ export const getPostsInfo: RequestHandler<{
         const postReactions = await DB_QUERIES.getReactionsByResourceIdsForUser(userId, postIds, 'post');
         userReactions = transformReactionsListToResourceIdToReactionMap(postReactions);
 
-        const postComments = await DB_QUERIES.getCommentsByResourceIdsForUser(userId, postIds, 'post');
-        userComments = transformCommentsListToResourceIdToCommentMap(postComments);
+        const postComments = await DB_QUERIES.getCommentsByResourceIdsForUser(userId, postIds, 'post', 5);
+        userComments = transformCommentsListToResourceIdToCommentMap(postComments.documents as Array<IComment>);
     }
 
     const postsInfo: Array<IPostsInfo> = [];
@@ -207,28 +208,45 @@ export const deletePost: RequestHandler<{
 
 export const getPostReactions: RequestHandler<{
     Params: { postId: string };
+    Querystring: { reaction: IReactionType; limit: number; nextSearchStartFromKey: string };
 }> = async (request, reply) => {
     const {
         params: { postId },
+        query: { reaction, limit, nextSearchStartFromKey },
     } = request;
-    const reactions = await DB_QUERIES.getReactionsForResource('post', postId);
-    const response: HttpResponse = {
+    const paginatedDocuments = await DB_QUERIES.getReactionsForResource(
+        'post',
+        postId,
+        reaction,
+        limit,
+        nextSearchStartFromKey ? (JSON.parse(decodeURI(nextSearchStartFromKey)) as ObjectType) : undefined
+    );
+    const response: HttpResponse<Array<Partial<IReaction>>> = {
         success: true,
-        data: reactions || [],
+        data: paginatedDocuments.documents,
+        dDBPagination: paginatedDocuments.dDBPagination,
     };
     reply.status(200).send(response);
 };
 
 export const getPostComments: RequestHandler<{
     Params: { postId: string };
+    Querystring: { limit: number; nextSearchStartFromKey: string };
 }> = async (request, reply) => {
     const {
         params: { postId },
+        query: { limit, nextSearchStartFromKey },
     } = request;
-    const comments = await DB_QUERIES.getCommentsForResource('post', postId);
+    const paginatedDocuments = await DB_QUERIES.getCommentsForResource(
+        'post',
+        postId,
+        limit,
+        nextSearchStartFromKey ? (JSON.parse(decodeURI(nextSearchStartFromKey)) as ObjectType) : undefined
+    );
     const response: HttpResponse = {
         success: true,
-        data: comments || [],
+        data: paginatedDocuments.documents,
+        dDBPagination: paginatedDocuments.dDBPagination,
     };
     reply.status(200).send(response);
 };

@@ -16,14 +16,14 @@ export interface IReaction {
     reaction: IReactionType;
 }
 const ReactionsSchema = new dynamoose.Schema({
-    id: { type: String, index: { name: 'reactionIdIndex' } }, // lsi
-    userId: { type: String, hashKey: true }, // partition key
-    createdAt: { type: Date, rangeKey: true }, // sort key
+    id: { type: String, index: { name: 'reactionIdIndex' } },
+    userId: { type: String, hashKey: true },
+    createdAt: { type: Date, rangeKey: true },
     resourceId: {
         type: String,
         index: { global: true, name: 'resourceIndex', rangeKey: 'resourceType', project: true },
-    }, // partition key- gsi
-    resourceType: { type: String }, // sort key- gsi
+    },
+    resourceType: { type: String },
     reaction: { type: String },
 });
 const Reaction = dynamoose.model<IDynamooseDocument<IReaction>>(TABLE.REACTIONS, ReactionsSchema);

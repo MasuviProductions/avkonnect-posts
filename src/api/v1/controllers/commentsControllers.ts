@@ -1,4 +1,5 @@
 import { SQS } from 'aws-sdk';
+import { ObjectType } from 'dynamoose/dist/General';
 import { v4 } from 'uuid';
 import ENV from '../../../constants/env';
 import { ErrorMessage, ErrorCode } from '../../../constants/errors';
@@ -150,11 +151,18 @@ export const deleteComment: RequestHandler<{
 
 export const getCommentComments: RequestHandler<{
     Params: { commentId: string };
+    Querystring: { limit: number; nextSearchStartFromKey: string };
 }> = async (request, reply) => {
     const {
         params: { commentId },
+        query: { limit, nextSearchStartFromKey },
     } = request;
-    const comments = await DB_QUERIES.getCommentsForResource('comment', commentId);
+    const comments = await DB_QUERIES.getCommentsForResource(
+        'comment',
+        commentId,
+        limit,
+        nextSearchStartFromKey ? (JSON.parse(decodeURI(nextSearchStartFromKey)) as ObjectType) : undefined
+    );
     const response: HttpResponse = {
         success: true,
         data: comments || [],
