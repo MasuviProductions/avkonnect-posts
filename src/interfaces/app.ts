@@ -13,6 +13,7 @@ import { ReplyGenericInterface } from 'fastify/types/reply';
 import { IComment, ICommentContent } from '../models/comments';
 import { IPost, IPostsContent } from '../models/posts';
 import { IReaction, IReactionType, IResourceType } from '../models/reactions';
+import { ISourceType } from '../models/shared';
 import { IUserApiModel } from './api';
 
 interface FastifyRouteGenericInterface extends RequestGenericInterface, ReplyGenericInterface {}
@@ -87,20 +88,21 @@ export interface IUpdatePostRequest {
     content: Omit<IPostsContent, 'createdAt'>;
 }
 
-export interface IPostInfoUserActivity {
-    userComments?: ICommentContent[];
-    userReaction?: IReactionType;
+export interface IPostInfoSourceActivity {
+    sourceComments?: ICommentContent[];
+    sourceReaction?: IReactionType;
 }
 
 export interface IPostsInfo extends Omit<IPost, 'id'> {
     postId: string;
     reactionsCount: Record<IReactionType, number>;
     commentsCount: number;
-    userActivity?: IPostInfoUserActivity;
+    sourceActivity?: IPostInfoSourceActivity;
 }
 
 export interface IPostsInfoRequest {
-    userId?: string;
+    sourceId?: string;
+    sourceType?: ISourceType;
     postIds: Array<string>;
 }
 
@@ -113,11 +115,11 @@ export interface IFeedsSQSEventRecord {
 }
 
 export interface IPostReactionModel extends IReaction {
-    relatedUser: IUserApiModel;
+    relatedSource: IUserApiModel;
 }
 export type IPostReactionsResponse = Array<IPostReactionModel>;
 
 export interface IPostCommentModel extends IComment {
-    relatedUser: IUserApiModel;
+    relatedSource: IUserApiModel;
 }
 export type IPostCommentsResponse = Array<IPostCommentModel>;

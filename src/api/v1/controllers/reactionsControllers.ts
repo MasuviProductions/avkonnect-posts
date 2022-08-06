@@ -20,7 +20,7 @@ export const createReaction: RequestHandler<{
         throw new HttpError(ErrorMessage.InvalidReactionTypeError, 400, ErrorCode.InputError);
     }
     await throwErrorIfResourceNotFound(body.resourceType, body.resourceId);
-    const existingReaction = await DB_QUERIES.getReactionsByUserIdForResource(
+    const existingReaction = await DB_QUERIES.getReactionsBySourceForResource(
         userId,
         body.resourceId,
         body.resourceType
@@ -29,7 +29,8 @@ export const createReaction: RequestHandler<{
     if (!existingReaction) {
         reaction = await DB_QUERIES.createReaction({
             id: v4(),
-            userId: userId,
+            sourceId: userId,
+            sourceType: 'user',
             createdAt: new Date(Date.now()),
             resourceId: body.resourceId,
             resourceType: body.resourceType,
@@ -102,7 +103,7 @@ export const deleteReaction: RequestHandler<{
         params: { reactionId },
     } = request;
     const userId = authUser?.id as string;
-    const existingReaction = await DB_QUERIES.getReactionByIdForUser(reactionId, userId);
+    const existingReaction = await DB_QUERIES.getReactionByIdForSource(reactionId, userId);
     if (existingReaction) {
         await DB_QUERIES.deleteReaction(userId, existingReaction.createdAt);
         const activity = await DB_QUERIES.getActivityByResource(
