@@ -2,22 +2,24 @@ import * as dynamoose from 'dynamoose';
 import { TABLE } from '../constants/db';
 import { IDynamooseDocument } from '../interfaces/app';
 import { IResourceType } from './reactions';
+import { IRelatedSource, ISourceType, RelatedSourceSchema } from './shared';
 
 export interface ICommentContent {
     text: string;
     createdAt: Date;
     mediaUrls: string[];
-    relatedUserIds: string[];
+    relatedSources: IRelatedSource[];
 }
 const CommentContentSchema = new dynamoose.Schema({
     text: { type: String },
     createdAt: { type: Date },
     mediaUrls: { type: Array, schema: Array.of(String) },
-    relatedUserIds: { type: Array, schema: Array.of(String) },
+    relatedSources: { type: Array, schema: Array.of(RelatedSourceSchema) },
 });
 
 export interface IComment {
-    userId: string;
+    sourceId: string;
+    sourceType: ISourceType;
     resourceId: string;
     id: string;
     resourceType: IResourceType;
@@ -25,7 +27,8 @@ export interface IComment {
     contents: ICommentContent[]; // project to gsi
 }
 const CommentsSchema = new dynamoose.Schema({
-    userId: { type: String, hashKey: true }, // partition key
+    sourceId: { type: String, hashKey: true }, // partition key
+    sourceType: { type: String },
     resourceId: {
         type: String,
         index: { name: 'resourceIndex', global: true, rangeKey: 'resourceType', project: true },

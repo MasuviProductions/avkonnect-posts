@@ -7,7 +7,7 @@ import {
     HttpResponse,
     ICreatePostRequest,
     IFeedsSQSEventRecord,
-    IPostInfoUserActivity,
+    IPostInfoSourceActivity,
     IPostReactionModel,
     IPostReactionsResponse,
     IPostCommentsResponse,
@@ -54,44 +54,45 @@ export const getPostsInfo: RequestHandler<{
 }> = async (request, reply) => {
     const { body } = request;
     const postIds = new Set(body.postIds);
-    const userId = body.userId;
+    const userId = body.sourceId;
     const posts = await DB_QUERIES.getPostsByIds(postIds);
     if (!posts) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
     const postsActivities = await DB_QUERIES.getActivitiesByResourceIds(postIds, 'post');
     const postIdToActivitiesMap = transformActivitiesListToResourceIdToActivityMap(postsActivities);
-    let userReactions: Record<string, IReaction>;
-    let userComments: Record<string, Array<ICommentContent>>;
+    let sourceReactions: Record<string, IReaction>;
+    let sourceComments: Record<string, Array<ICommentContent>>;
 
     if (userId) {
-        const postReactions = await DB_QUERIES.getReactionsByResourceIdsForUser(userId, postIds, 'post');
-        userReactions = transformReactionsListToResourceIdToReactionMap(postReactions);
+        const postReactions = await DB_QUERIES.getReactionsByResourceIdsForSource(userId, postIds, 'post');
+        sourceReactions = transformReactionsListToResourceIdToReactionMap(postReactions);
 
-        const postComments = await DB_QUERIES.getCommentsByResourceIdsForUser(userId, postIds, 'post', 5);
-        userComments = transformCommentsListToResourceIdToCommentMap(postComments.documents as Array<IComment>);
+        const postComments = await DB_QUERIES.getCommentsByResourceIdsForSource(userId, postIds, 'post', 5);
+        sourceComments = transformCommentsListToResourceIdToCommentMap(postComments.documents as Array<IComment>);
     }
 
     const postsInfo: Array<IPostsInfo> = [];
     posts.forEach((post) => {
         const activity = postIdToActivitiesMap[post.id];
-        let userPostInfoActivity: IPostInfoUserActivity | undefined = undefined;
-        const userPostReaction = userReactions?.[post.id]?.reaction;
-        const userPostComments = userComments?.[post.id];
-        if (userPostReaction || userPostComments) {
-            userPostInfoActivity = { userReaction: userPostReaction, userComments: userPostComments };
+        let sourcePostInfoActivity: IPostInfoSourceActivity | undefined = undefined;
+        const sourcePostReaction = sourceReactions?.[post.id]?.reaction;
+        const sourcePostComments = sourceComments?.[post.id];
+        if (sourcePostReaction || sourcePostComments) {
+            sourcePostInfoActivity = { sourceReaction: sourcePostReaction, sourceComments: sourcePostComments };
         }
         const postInfo: IPostsInfo = {
             postId: post.id,
             createdAt: post.createdAt,
             updatedAt: post.updatedAt,
-            userId: post.userId,
+            sourceId: post.sourceId,
+            sourceType: 'user',
             contents: post.contents,
             visibleOnlyToConnections: post.visibleOnlyToConnections,
             commentsOnlyByConnections: post.commentsOnlyByConnections,
             reactionsCount: activity.reactions,
             commentsCount: activity.commentsCount,
-            userActivity: userPostInfoActivity,
+            sourceActivity: sourcePostInfoActivity,
         };
         postsInfo.push(postInfo);
     });
@@ -112,7 +113,8 @@ export const createPost: RequestHandler<{
         createdAt: new Date(Date.now()),
     };
     const post: Partial<IPost> = {
-        userId: authUser?.id as string,
+        sourceId: authUser?.id as string,
+        sourceType: 'user',
         contents: [postContent],
         visibleOnlyToConnections: body.visibleOnlyToConnections,
         commentsOnlyByConnections: body.commentsOnlyByConnections,
@@ -169,7 +171,7 @@ export const updatePost: RequestHandler<{
     if (!post) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
-    if (authUser?.id != post.userId) {
+    if (authUser?.id != post.sourceId) {
         throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
     }
     const updatedPostContent: IPostsContent = {
@@ -198,7 +200,7 @@ export const deletePost: RequestHandler<{
     if (!post) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
-    if (authUser?.id != post.userId) {
+    if (authUser?.id != post.sourceId) {
         throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
     }
     const deletedPost = await DB_QUERIES.deletePostById(postId);
@@ -229,7 +231,7 @@ export const getPostReactions: RequestHandler<{
     );
     const relatedUserIds = new Set<string>();
     paginatedDocuments.documents?.forEach((reaction) => {
-        relatedUserIds.add(reaction.userId as string);
+        relatedUserIds.add(reaction.sourceId as string);
     });
     const relatedUsers = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, Array.from(relatedUserIds));
     const relatedUserIdUserMap = transformUsersListToUserIdUserMap(relatedUsers.data || []);
@@ -237,7 +239,7 @@ export const getPostReactions: RequestHandler<{
         (reaction) =>
             ({
                 ...reaction,
-                relatedUser: relatedUserIdUserMap[reaction.userId as string],
+                relatedSource: relatedUserIdUserMap[reaction.sourceId as string],
             } as IPostReactionModel)
     );
     const response: HttpResponse<IPostReactionsResponse> = {
@@ -264,7 +266,7 @@ export const getPostComments: RequestHandler<{
     );
     const relatedUserIds = new Set<string>();
     paginatedDocuments.documents?.forEach((comment) => {
-        relatedUserIds.add(comment.userId as string);
+        relatedUserIds.add(comment.sourceId as string);
     });
     const relatedUsers = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, Array.from(relatedUserIds));
     const relatedUserIdUserMap = transformUsersListToUserIdUserMap(relatedUsers.data || []);
@@ -272,7 +274,7 @@ export const getPostComments: RequestHandler<{
         (comment) =>
             ({
                 ...comment,
-                relatedUser: relatedUserIdUserMap[comment.userId as string],
+                relatedSource: relatedUserIdUserMap[comment.sourceId as string],
             } as IPostCommentModel)
     );
     const response: HttpResponse<IPostCommentsResponse> = {

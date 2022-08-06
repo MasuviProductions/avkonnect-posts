@@ -55,11 +55,11 @@ const getCommentById = async (commentId: string): Promise<IComment | undefined> 
 };
 
 const updateComment = async (
-    userId: string,
+    sourceId: string,
     createdAt: Date,
     updatedComment: Pick<IComment, 'contents'>
 ): Promise<IComment | undefined> => {
-    const comment = await Comment.update({ userId: userId, createdAt: createdAt.getTime() }, updatedComment);
+    const comment = await Comment.update({ sourceId: sourceId, createdAt: createdAt.getTime() }, updatedComment);
     return comment;
 };
 
@@ -79,7 +79,7 @@ const getCommentsForResource = async (
         commentsQuery as Query<IDynamooseDocument<IComment>>,
         [],
         limit,
-        ['userId', 'createdAt', 'resourceId', 'resourceType'],
+        ['sourceId', 'createdAt', 'resourceId', 'resourceType'],
         nextSearchStartFromKey
     );
 
@@ -91,15 +91,15 @@ const getCommentsForResource = async (
     return paginatedDocuments;
 };
 
-const getCommentsByResourceIdsForUser = async (
-    userId: string,
+const getCommentsByResourceIdsForSource = async (
+    sourceId: string,
     resourceIdsList: Set<string>,
     resourceType: IResourceType,
     limit: number,
     nextSearchStartFromKey?: ObjectType
 ): Promise<{ documents: Array<Partial<IComment>> | undefined; dDBPagination: HttpDynamoDBResponsePagination }> => {
-    const commentsQuery = Comment.query('userId')
-        .eq(userId)
+    const commentsQuery = Comment.query('sourceId')
+        .eq(sourceId)
         .and()
         .where('resourceId')
         .in(Array.from(resourceIdsList))
@@ -111,7 +111,7 @@ const getCommentsByResourceIdsForUser = async (
         commentsQuery,
         [],
         limit,
-        ['userId', 'createdAt', 'resourceId', 'resourceType'],
+        ['sourceId', 'createdAt', 'resourceId', 'resourceType'],
         nextSearchStartFromKey
     );
 
@@ -123,8 +123,8 @@ const getCommentsByResourceIdsForUser = async (
     return paginatedDocuments;
 };
 
-const deleteComment = async (userId: string, createdAt: Date): Promise<void> => {
-    await Comment.delete({ userId: userId, createdAt: createdAt.getTime() });
+const deleteComment = async (sourceId: string, createdAt: Date): Promise<void> => {
+    await Comment.delete({ sourceId: sourceId, createdAt: createdAt.getTime() });
 };
 
 const createReaction = async (reaction: IReaction): Promise<IReaction | undefined> => {
@@ -150,7 +150,7 @@ const getReactionsForResource = async (
         reactionsQuery.using('resourceIndex') as Query<IDynamooseDocument<IReaction>>,
         [],
         limit,
-        ['userId', 'createdAt', 'resourceId', 'resourceType'],
+        ['sourceId', 'createdAt', 'resourceId', 'resourceType'],
         nextSearchStartFromKey
     );
 
@@ -163,8 +163,8 @@ const getReactionsForResource = async (
     return paginatedDocuments;
 };
 
-const getReactionByIdForUser = async (reactionId: string, userId: string): Promise<IReaction | undefined> => {
-    const reaction = await Reaction.query('userId').eq(userId).and().where('id').eq(reactionId).exec();
+const getReactionByIdForSource = async (reactionId: string, sourceId: string): Promise<IReaction | undefined> => {
+    const reaction = await Reaction.query('sourceId').eq(sourceId).and().where('id').eq(reactionId).exec();
     return reaction?.[0];
 };
 
@@ -174,28 +174,28 @@ const getReaction = async (reactionId: string): Promise<IReaction | undefined> =
 };
 
 const updateReactionTypeForReaction = async (
-    userId: string,
+    sourceId: string,
     createdAt: Date,
     reactionType: IReactionType
 ): Promise<IReaction | undefined> => {
     const updatedReaction = await Reaction.update(
-        { userId: userId, createdAt: createdAt.getTime() },
+        { sourceId: sourceId, createdAt: createdAt.getTime() },
         { reaction: reactionType }
     );
     return updatedReaction;
 };
 
-const deleteReaction = async (userId: string, createdAt: Date): Promise<void> => {
-    await Reaction.delete({ userId: userId, createdAt: createdAt.getTime() });
+const deleteReaction = async (sourceId: string, createdAt: Date): Promise<void> => {
+    await Reaction.delete({ sourceId: sourceId, createdAt: createdAt.getTime() });
 };
 
-const getReactionsByUserIdForResource = async (
-    userId: string,
+const getReactionsBySourceForResource = async (
+    sourceId: string,
     resourceId: string,
     resourceType: IResourceType
 ): Promise<IReaction | undefined> => {
-    const reactions = await Reaction.query('userId')
-        .eq(userId)
+    const reactions = await Reaction.query('sourceId')
+        .eq(sourceId)
         .and()
         .where('resourceId')
         .eq(resourceId)
@@ -207,13 +207,13 @@ const getReactionsByUserIdForResource = async (
     return reactions?.[0];
 };
 
-const getReactionsByResourceIdsForUser = async (
-    userId: string,
+const getReactionsByResourceIdsForSource = async (
+    sourceId: string,
     resourceIdsList: Set<string>,
     resourceType: IResourceType
 ): Promise<Array<IReaction>> => {
-    const reactions = await Reaction.query('userId')
-        .eq(userId)
+    const reactions = await Reaction.query('sourceId')
+        .eq(sourceId)
         .and()
         .where('resourceId')
         .in(Array.from(resourceIdsList))
@@ -263,19 +263,19 @@ const DB_QUERIES = {
     getActivitiesByResourceIds,
     updateActivity,
     createComment,
-    getCommentsByResourceIdsForUser,
+    getCommentsByResourceIdsForSource,
     getCommentsForResource,
     getPostById,
     deletePostById,
     updatePost,
     createReaction,
     updateReactionTypeForReaction,
-    getReactionsByUserIdForResource,
-    getReactionsByResourceIdsForUser,
+    getReactionsBySourceForResource,
+    getReactionsByResourceIdsForSource,
     getCommentById,
     deleteComment,
     updateComment,
-    getReactionByIdForUser,
+    getReactionByIdForSource,
     getReaction,
     deleteReaction,
     getReactionsForResource,

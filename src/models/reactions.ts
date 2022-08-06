@@ -1,6 +1,7 @@
 import * as dynamoose from 'dynamoose';
 import { TABLE } from '../constants/db';
 import { IDynamooseDocument } from '../interfaces/app';
+import { ISourceType } from './shared';
 
 export type IResourceType = 'post' | 'comment';
 
@@ -9,7 +10,8 @@ export type IReactionType = typeof REACTIONS[number];
 
 export interface IReaction {
     id: string;
-    userId: string;
+    sourceId: string;
+    sourceType: ISourceType;
     createdAt: Date;
     resourceId: string;
     resourceType: IResourceType;
@@ -17,7 +19,8 @@ export interface IReaction {
 }
 const ReactionsSchema = new dynamoose.Schema({
     id: { type: String, index: { name: 'reactionIdIndex' } },
-    userId: { type: String, hashKey: true },
+    sourceId: { type: String, hashKey: true },
+    sourceType: { type: String },
     createdAt: { type: Date, rangeKey: true },
     resourceId: {
         type: String,

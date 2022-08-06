@@ -26,7 +26,8 @@ export const createComment: RequestHandler<{
     const comment: IComment = {
         ...body,
         id: v4(),
-        userId: authUser?.id as string,
+        sourceId: authUser?.id as string,
+        sourceType: 'user',
         createdAt: new Date(currentTime),
         resourceId: body.resourceId,
         resourceType: body.resourceType,
@@ -101,11 +102,11 @@ export const updateComment: RequestHandler<{
     if (!comment) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
-    if (authUser?.id != comment.userId) {
+    if (authUser?.id != comment.sourceId) {
         throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
     }
     const newCommentContent: ICommentContent = { ...body.comment, createdAt: new Date(Date.now()) };
-    const updatedComment = await DB_QUERIES.updateComment(comment.userId, comment.createdAt, {
+    const updatedComment = await DB_QUERIES.updateComment(comment.sourceId, comment.createdAt, {
         contents: [...comment.contents, newCommentContent],
     });
     const response: HttpResponse<IComment> = {
@@ -126,22 +127,22 @@ export const deleteComment: RequestHandler<{
     if (!comment) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
-    if (authUser?.id != comment.userId) {
+    if (authUser?.id != comment.sourceId) {
         if (comment.resourceType === 'comment') {
             const parentComment = await DB_QUERIES.getCommentById(comment.resourceId);
-            if (authUser?.id !== parentComment?.userId) {
+            if (authUser?.id !== parentComment?.sourceId) {
                 throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
             }
         } else if (comment.resourceType === 'post') {
             const parentPost = await DB_QUERIES.getPostById(comment.resourceId);
-            if (authUser?.id !== parentPost?.userId) {
+            if (authUser?.id !== parentPost?.sourceId) {
                 throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
             }
         } else {
             throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
         }
     }
-    await DB_QUERIES.deleteComment(comment.userId, comment.createdAt);
+    await DB_QUERIES.deleteComment(comment.sourceId, comment.createdAt);
     // TODO: Handle deletion of reacts and comments of comment
     const response: HttpResponse<IPost> = {
         success: true,
