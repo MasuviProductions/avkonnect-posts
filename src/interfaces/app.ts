@@ -97,7 +97,8 @@ export interface IPostResponse extends IPost {
 }
 
 export interface IUpdatePostRequest {
-    content: Omit<IPostsContent, 'createdAt'>;
+    content?: Omit<IPostsContent, 'createdAt'>;
+    hashtags?: Array<string>;
 }
 
 export interface IPostInfoSourceActivity {
@@ -118,10 +119,10 @@ export interface IPostsInfoRequest {
     postIds: Array<string>;
 }
 
-export type IPostsInfoResponse = {
+export interface IPostsInfoResponse {
     postsInfo: Array<IPostsInfo>;
     relatedSources: Array<IRelatedSource>;
-};
+}
 
 export interface IPostReactionsResponse {
     reactions: Array<IReaction>;

@@ -97,6 +97,7 @@ export const getPostsInfo: RequestHandler<{
             reactionsCount: activity.reactions,
             commentsCount: activity.commentsCount,
             sourceActivity: sourcePostInfoActivity,
+            hashtags: post.hashtags,
         };
 
         const taggedUserIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(post));
@@ -134,6 +135,7 @@ export const createPost: RequestHandler<{
         contents: [postContent],
         visibleOnlyToConnections: body.visibleOnlyToConnections,
         commentsOnlyByConnections: body.commentsOnlyByConnections,
+        hashtags: body.hashtags,
     };
     const createdPost = await DB_QUERIES.createPost(post);
     if (!createdPost) {
@@ -193,13 +195,18 @@ export const updatePost: RequestHandler<{
     if (authUser?.id != post.sourceId) {
         throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
     }
-    const updatedPostContent: IPostsContent = {
-        ...body.content,
-        createdAt: new Date(Date.now()),
-    };
+    const postContents: IPostsContent[] = [...post.contents];
+    if (body.content) {
+        const updatedPostContent: IPostsContent = {
+            ...body.content,
+            createdAt: new Date(Date.now()),
+        };
+        postContents.push(updatedPostContent);
+    }
     const updatedPost = await DB_QUERIES.updatePost(postId, {
         ...post,
-        contents: [...post.contents, updatedPostContent],
+        contents: postContents,
+        hashtags: Array.from(new Set([...(post.hashtags || []), ...(body.hashtags || [])])),
     });
     if (!updatedPost) {
         throw new HttpError(ErrorMessage.BadRequest, 400, ErrorCode.BadRequest);

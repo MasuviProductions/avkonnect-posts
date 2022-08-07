@@ -12,6 +12,7 @@ import {
     ICommentResponse,
     ICommentCommentsResponse,
 } from '../../../interfaces/app';
+import { IActivity } from '../../../models/activities';
 import { IComment, ICommentContent } from '../../../models/comments';
 import { SourceType } from '../../../models/shared';
 import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
@@ -40,7 +41,7 @@ export const createComment: RequestHandler<{
     if (!createdComment) {
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
     }
-    const createdActivity = await DB_QUERIES.createActivity({
+    const createdActivityForComment = await DB_QUERIES.createActivity({
         id: v4(),
         resourceId: createdComment.id,
         resourceType: 'comment',
@@ -53,7 +54,14 @@ export const createComment: RequestHandler<{
         },
         commentsCount: 0,
     });
-    if (!createdActivity) {
+
+    const activity = await DB_QUERIES.getActivityByResource(body.resourceId, body.resourceType);
+    const updatedActivityForResource: Partial<Pick<IActivity, 'commentsCount' | 'reactions'>> = {
+        commentsCount: activity.commentsCount + 1,
+    };
+    await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivityForResource);
+
+    if (!createdActivityForComment) {
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
     }
     if (createdComment.resourceType === 'post') {
@@ -167,6 +175,13 @@ export const deleteComment: RequestHandler<{
         }
     }
     await DB_QUERIES.deleteComment(comment.sourceId, comment.createdAt);
+
+    const activity = await DB_QUERIES.getActivityByResource(comment.resourceId, comment.resourceType);
+    const updatedActivityForResource: Partial<Pick<IActivity, 'commentsCount' | 'reactions'>> = {
+        commentsCount: activity.commentsCount - 1,
+    };
+    await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivityForResource);
+
     // TODO: Handle deletion of reacts and comments of comment
     const response: HttpResponse = {
         success: true,
