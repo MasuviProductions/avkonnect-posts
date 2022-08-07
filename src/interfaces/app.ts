@@ -61,6 +61,12 @@ export interface HttpResponse<T = unknown> {
 
 export type IDynamooseDocument<T> = T & Document;
 
+export interface IFeedsSQSEventRecord {
+    eventType: 'generateFeeds';
+    resourceId: string;
+    resourceType: 'post' | 'comment' | 'reaction';
+}
+
 export interface ICreateReactionRequest {
     resourceId: string;
     resourceType: IResourceType;
@@ -84,8 +90,15 @@ export interface ICreatePostRequest {
     commentsOnlyByConnections: boolean;
 }
 
+export type IRelatedSource = Partial<IUserApiModel>;
+
+export interface IPostResponse extends IPost {
+    relatedSources: IRelatedSource[];
+}
+
 export interface IUpdatePostRequest {
-    content: Omit<IPostsContent, 'createdAt'>;
+    content?: Omit<IPostsContent, 'createdAt'>;
+    hashtags?: Array<string>;
 }
 
 export interface IPostInfoSourceActivity {
@@ -106,20 +119,30 @@ export interface IPostsInfoRequest {
     postIds: Array<string>;
 }
 
-export type IPostsInfoResponse = Array<IPostsInfo>;
-
-export interface IFeedsSQSEventRecord {
-    eventType: 'generateFeeds';
-    resourceId: string;
-    resourceType: 'post' | 'comment' | 'reaction';
+export interface IPostsInfoResponse {
+    postsInfo: Array<IPostsInfo>;
+    relatedSources: Array<IRelatedSource>;
 }
 
-export interface IPostReactionModel extends IReaction {
-    relatedSource: IUserApiModel;
+export interface IPostReactionsResponse {
+    reactions: Array<IReaction>;
+    relatedSources: Array<IRelatedSource>;
 }
-export type IPostReactionsResponse = Array<IPostReactionModel>;
 
-export interface IPostCommentModel extends IComment {
-    relatedSource: IUserApiModel;
+export interface IPostCommentsResponse {
+    comments: Array<IComment>;
+    relatedSources: Array<IRelatedSource>;
 }
-export type IPostCommentsResponse = Array<IPostCommentModel>;
+
+export interface ICommentResponse extends IComment {
+    relatedSources: IRelatedSource[];
+}
+
+export interface ICommentCommentsResponse {
+    comments: Array<IComment>;
+    relatedSources: Array<IRelatedSource>;
+}
+
+export interface IReactionResponse extends IReaction {
+    relatedSource: IRelatedSource;
+}

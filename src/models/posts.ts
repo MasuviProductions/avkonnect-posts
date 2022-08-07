@@ -1,27 +1,18 @@
 import mongoose, { Schema } from 'mongoose';
 import mongooseLeanVirtuals from 'mongoose-lean-virtuals';
 import { TABLE } from '../constants/db';
-import { IRelatedSource, ISourceType } from './shared';
-
-const RelatedSourceSchema = new Schema<IRelatedSource>({
-    sourceId: { type: String },
-    sourceType: { type: String },
-});
+import { ISourceType } from './shared';
 
 export interface IPostsContent {
     text: string;
     createdAt: Date;
     mediaUrls: string[];
-    relatedSources: IRelatedSource[];
-    hashtags: string[];
 }
 const PostContentSchema = new Schema<IPostsContent>(
     {
         text: { type: String },
         createdAt: { type: Date },
         mediaUrls: { type: Array.of(String) },
-        relatedSources: { type: Array.of(RelatedSourceSchema) },
-        hashtags: { type: Array.of(String) },
     },
     { id: false }
 );
@@ -33,6 +24,7 @@ export interface IPost {
     sourceId: string;
     sourceType: ISourceType;
     contents: IPostsContent[];
+    hashtags: Array<string>;
     visibleOnlyToConnections: boolean;
     commentsOnlyByConnections: boolean;
 }
@@ -44,6 +36,7 @@ const PostsSchema = new Schema(
         sourceId: { type: String, required: true, index: true },
         sourceType: { type: String, required: true },
         contents: { type: Array.of(PostContentSchema) },
+        hashtags: { type: Array.of(String) },
         visibleOnlyToConnections: { type: Boolean, required: true },
         commentsOnlyByConnections: { type: Boolean, required: true },
     },

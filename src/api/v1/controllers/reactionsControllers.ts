@@ -2,9 +2,18 @@ import { SQS } from 'aws-sdk';
 import { v4 } from 'uuid';
 import ENV from '../../../constants/env';
 import { ErrorMessage, ErrorCode } from '../../../constants/errors';
-import { RequestHandler, ICreateReactionRequest, HttpResponse, IFeedsSQSEventRecord } from '../../../interfaces/app';
+import {
+    RequestHandler,
+    ICreateReactionRequest,
+    HttpResponse,
+    IFeedsSQSEventRecord,
+    IReactionResponse,
+    IRelatedSource,
+} from '../../../interfaces/app';
 import { IActivity } from '../../../models/activities';
 import { REACTIONS, IReaction } from '../../../models/reactions';
+import { SourceType } from '../../../models/shared';
+import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
 import { throwErrorIfResourceNotFound } from '../../../utils/db/generic';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
@@ -30,7 +39,7 @@ export const createReaction: RequestHandler<{
         reaction = await DB_QUERIES.createReaction({
             id: v4(),
             sourceId: userId,
-            sourceType: 'user',
+            sourceType: SourceType.USER,
             createdAt: new Date(Date.now()),
             resourceId: body.resourceId,
             resourceType: body.resourceType,
@@ -71,9 +80,17 @@ export const createReaction: RequestHandler<{
     if (!reaction) {
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
     }
-    const response: HttpResponse<IReaction> = {
+
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, [reaction.sourceId]);
+
+    const reactionInfo: IReactionResponse = {
+        ...reaction,
+        relatedSource: relatedUsersRes.data?.[0] as IRelatedSource,
+    };
+
+    const response: HttpResponse<IReactionResponse> = {
         success: true,
-        data: reaction,
+        data: reactionInfo,
     };
     reply.status(200).send(response);
 };
@@ -88,9 +105,16 @@ export const getReaction: RequestHandler<{
     if (!reaction) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
-    const response: HttpResponse<IReaction> = {
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, [reaction.sourceId]);
+
+    const reactionInfo: IReactionResponse = {
+        ...reaction,
+        relatedSource: relatedUsersRes.data?.[0] as IRelatedSource,
+    };
+
+    const response: HttpResponse<IReactionResponse> = {
         success: true,
-        data: reaction,
+        data: reactionInfo,
     };
     reply.status(200).send(response);
 };

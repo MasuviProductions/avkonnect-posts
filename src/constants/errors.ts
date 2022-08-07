@@ -6,6 +6,7 @@ export enum ErrorCode {
     InternalServerError = 'internal_server_error',
     InputError = 'input_error',
     CreationError = 'creation_error',
+    BadRequest = 'bad_request',
 }
 
 export enum ErrorMessage {
@@ -16,4 +17,5 @@ export enum ErrorMessage {
     InvalidResourceTypeError = 'Resource type is not valid',
     InvalidReactionTypeError = 'Reaction type is not valid',
     CreationError = 'Failed to create resource',
+    BadRequest = 'Bad Request',
 }
