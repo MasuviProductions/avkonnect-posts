@@ -118,7 +118,10 @@ export interface IPostsInfoRequest {
     postIds: Array<string>;
 }
 
-export type IPostsInfoResponse = Array<IPostsInfo>;
+export type IPostsInfoResponse = {
+    postsInfo: Array<IPostsInfo>;
+    relatedSources: Array<IRelatedSource>;
+};
 
 export interface IPostReactionsResponse {
     reactions: Array<IReaction>;

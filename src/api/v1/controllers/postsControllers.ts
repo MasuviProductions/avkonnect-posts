@@ -75,6 +75,7 @@ export const getPostsInfo: RequestHandler<{
         sourceComments = transformCommentsListToResourceIdToCommentMap(postComments.documents as Array<IComment>);
     }
 
+    const relatedUserIds: Array<string> = [];
     const postsInfo: Array<IPostsInfo> = [];
     posts.forEach((post) => {
         const activity = postIdToActivitiesMap[post.id];
@@ -97,12 +98,24 @@ export const getPostsInfo: RequestHandler<{
             commentsCount: activity.commentsCount,
             sourceActivity: sourcePostInfoActivity,
         };
+
+        const taggedUserIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(post));
+        taggedUserIds.forEach((userId) => {
+            relatedUserIds.push(userId);
+        });
         postsInfo.push(postInfo);
     });
 
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, relatedUserIds);
+
+    const postsInfoData: IPostsInfoResponse = {
+        postsInfo: postsInfo,
+        relatedSources: [...(relatedUsersRes.data || [])],
+    };
+
     const response: HttpResponse<IPostsInfoResponse> = {
         success: true,
-        data: postsInfo,
+        data: postsInfoData,
     };
     reply.status(200).send(response);
 };
