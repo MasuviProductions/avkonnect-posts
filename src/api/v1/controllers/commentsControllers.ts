@@ -9,12 +9,16 @@ import {
     HttpResponse,
     IUpdateCommentRequest,
     IFeedsSQSEventRecord,
+    ICommentResponse,
+    ICommentCommentsResponse,
 } from '../../../interfaces/app';
 import { IComment, ICommentContent } from '../../../models/comments';
-import { IPost } from '../../../models/posts';
+import { SourceType } from '../../../models/shared';
+import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
 import { throwErrorIfResourceNotFound } from '../../../utils/db/generic';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
+import { getSourceIdsFromSourceMarkups, getSourceMarkupsFromPostOrComment } from '../../../utils/generic';
 import SQS_QUEUE from '../../../utils/queue';
 
 export const createComment: RequestHandler<{
@@ -24,10 +28,9 @@ export const createComment: RequestHandler<{
     await throwErrorIfResourceNotFound(body.resourceType, body.resourceId);
     const currentTime = Date.now();
     const comment: IComment = {
-        ...body,
         id: v4(),
         sourceId: authUser?.id as string,
-        sourceType: 'user',
+        sourceType: SourceType.USER,
         createdAt: new Date(currentTime),
         resourceId: body.resourceId,
         resourceType: body.resourceType,
@@ -65,9 +68,15 @@ export const createComment: RequestHandler<{
         };
         await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
     }
-    const response: HttpResponse<IComment> = {
+    const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(createdComment));
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
+    const createdCommentInfo: ICommentResponse = {
+        ...createdComment,
+        relatedSources: [...(relatedUsersRes.data || [])],
+    };
+    const response: HttpResponse<ICommentResponse> = {
         success: true,
-        data: createdComment,
+        data: createdCommentInfo,
     };
     reply.status(200).send(response);
 };
@@ -82,9 +91,15 @@ export const getComment: RequestHandler<{
     if (!comment) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
-    const response: HttpResponse<IComment> = {
+    const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(comment));
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
+    const commentInfo: ICommentResponse = {
+        ...comment,
+        relatedSources: [...(relatedUsersRes.data || [])],
+    };
+    const response: HttpResponse<ICommentResponse> = {
         success: true,
-        data: comment,
+        data: commentInfo,
     };
     reply.status(200).send(response);
 };
@@ -109,9 +124,18 @@ export const updateComment: RequestHandler<{
     const updatedComment = await DB_QUERIES.updateComment(comment.sourceId, comment.createdAt, {
         contents: [...comment.contents, newCommentContent],
     });
-    const response: HttpResponse<IComment> = {
+    if (!updatedComment) {
+        throw new HttpError(ErrorMessage.BadRequest, 400, ErrorCode.BadRequest);
+    }
+    const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(updatedComment));
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
+    const updatedCommentInfo: ICommentResponse = {
+        ...updatedComment,
+        relatedSources: [...(relatedUsersRes.data || [])],
+    };
+    const response: HttpResponse<ICommentResponse> = {
         success: true,
-        data: updatedComment,
+        data: updatedCommentInfo,
     };
     reply.status(200).send(response);
 };
@@ -144,7 +168,7 @@ export const deleteComment: RequestHandler<{
     }
     await DB_QUERIES.deleteComment(comment.sourceId, comment.createdAt);
     // TODO: Handle deletion of reacts and comments of comment
-    const response: HttpResponse<IPost> = {
+    const response: HttpResponse = {
         success: true,
     };
     reply.status(200).send(response);
@@ -158,15 +182,41 @@ export const getCommentComments: RequestHandler<{
         params: { commentId },
         query: { limit, nextSearchStartFromKey },
     } = request;
-    const comments = await DB_QUERIES.getCommentsForResource(
+    const paginatedDocuments = await DB_QUERIES.getCommentsForResource(
         'comment',
         commentId,
         limit,
         nextSearchStartFromKey ? (JSON.parse(decodeURI(nextSearchStartFromKey)) as ObjectType) : undefined
     );
-    const response: HttpResponse = {
+
+    const comments = paginatedDocuments.documents;
+    const relatedUserIds = new Set<string>();
+    comments?.forEach((comment) => {
+        relatedUserIds.add(comment.sourceId as string);
+
+        const taggedUserIds = getSourceIdsFromSourceMarkups(
+            SourceType.USER,
+            getSourceMarkupsFromPostOrComment(comment as IComment)
+        );
+        taggedUserIds.forEach((taggedUserId) => {
+            relatedUserIds.add(taggedUserId);
+        });
+    });
+
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(
+        ENV.AUTH_SERVICE_KEY,
+        Array.from(relatedUserIds)
+    );
+
+    const commentsInfo: ICommentCommentsResponse = {
+        comments: comments as IComment[],
+        relatedSources: [...(relatedUsersRes.data || [])],
+    };
+
+    const response: HttpResponse<ICommentCommentsResponse> = {
         success: true,
-        data: comments || [],
+        data: commentsInfo,
+        dDBPagination: paginatedDocuments.dDBPagination,
     };
     reply.status(200).send(response);
 };

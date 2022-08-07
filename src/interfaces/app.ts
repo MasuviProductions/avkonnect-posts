@@ -61,6 +61,12 @@ export interface HttpResponse<T = unknown> {
 
 export type IDynamooseDocument<T> = T & Document;
 
+export interface IFeedsSQSEventRecord {
+    eventType: 'generateFeeds';
+    resourceId: string;
+    resourceType: 'post' | 'comment' | 'reaction';
+}
+
 export interface ICreateReactionRequest {
     resourceId: string;
     resourceType: IResourceType;
@@ -82,6 +88,12 @@ export interface ICreatePostRequest {
     hashtags: string[];
     visibleOnlyToConnections: boolean;
     commentsOnlyByConnections: boolean;
+}
+
+export type IRelatedSource = Partial<IUserApiModel>;
+
+export interface IPostResponse extends IPost {
+    relatedSources: IRelatedSource[];
 }
 
 export interface IUpdatePostRequest {
@@ -108,18 +120,25 @@ export interface IPostsInfoRequest {
 
 export type IPostsInfoResponse = Array<IPostsInfo>;
 
-export interface IFeedsSQSEventRecord {
-    eventType: 'generateFeeds';
-    resourceId: string;
-    resourceType: 'post' | 'comment' | 'reaction';
+export interface IPostReactionsResponse {
+    reactions: Array<IReaction>;
+    relatedSources: Array<IRelatedSource>;
 }
 
-export interface IPostReactionModel extends IReaction {
-    relatedSource: IUserApiModel;
+export interface IPostCommentsResponse {
+    comments: Array<IComment>;
+    relatedSources: Array<IRelatedSource>;
 }
-export type IPostReactionsResponse = Array<IPostReactionModel>;
 
-export interface IPostCommentModel extends IComment {
-    relatedSource: IUserApiModel;
+export interface ICommentResponse extends IComment {
+    relatedSources: IRelatedSource[];
 }
-export type IPostCommentsResponse = Array<IPostCommentModel>;
+
+export interface ICommentCommentsResponse {
+    comments: Array<IComment>;
+    relatedSources: Array<IRelatedSource>;
+}
+
+export interface IReactionResponse extends IReaction {
+    relatedSource: IRelatedSource;
+}

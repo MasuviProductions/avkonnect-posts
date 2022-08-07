@@ -1,12 +1,8 @@
-import * as dynamoose from 'dynamoose';
-
-export type ISourceType = 'user' | 'company';
-
-export interface IRelatedSource {
-    sourceId: string;
-    sourceType: ISourceType;
+export enum SourceType {
+    USER = 'user',
+    COMPANY = 'company',
 }
-export const RelatedSourceSchema = new dynamoose.Schema({
-    sourceId: { type: String },
-    sourceType: { type: String },
-});
+
+export const SOURCE_TYPES = [SourceType.USER, SourceType.COMPANY] as const;
+
+export type ISourceType = typeof SOURCE_TYPES[number];

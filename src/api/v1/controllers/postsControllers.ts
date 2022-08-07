@@ -8,28 +8,28 @@ import {
     ICreatePostRequest,
     IFeedsSQSEventRecord,
     IPostInfoSourceActivity,
-    IPostReactionModel,
     IPostReactionsResponse,
     IPostCommentsResponse,
-    IPostCommentModel,
     IPostsInfo,
     IPostsInfoRequest,
     IPostsInfoResponse,
     IUpdatePostRequest,
     RequestHandler,
+    IPostResponse,
 } from '../../../interfaces/app';
 import { IComment, ICommentContent } from '../../../models/comments';
 import { IPost, IPostsContent } from '../../../models/posts';
 import { IReaction, IReactionType } from '../../../models/reactions';
+import { SourceType } from '../../../models/shared';
 import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
+import { getSourceIdsFromSourceMarkups, getSourceMarkupsFromPostOrComment } from '../../../utils/generic';
 import SQS_QUEUE from '../../../utils/queue';
 import {
     transformActivitiesListToResourceIdToActivityMap,
     transformCommentsListToResourceIdToCommentMap,
     transformReactionsListToResourceIdToReactionMap,
-    transformUsersListToUserIdUserMap,
 } from '../../../utils/transformers';
 
 export const getPost: RequestHandler<{
@@ -42,9 +42,12 @@ export const getPost: RequestHandler<{
     if (!post) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
-    const response: HttpResponse<IPost> = {
+    const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(post));
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
+    const postInfo: IPostResponse = { ...post, relatedSources: relatedUsersRes.data || [] };
+    const response: HttpResponse<IPostResponse> = {
         success: true,
-        data: post,
+        data: postInfo,
     };
     reply.status(200).send(response);
 };
@@ -86,7 +89,7 @@ export const getPostsInfo: RequestHandler<{
             createdAt: post.createdAt,
             updatedAt: post.updatedAt,
             sourceId: post.sourceId,
-            sourceType: 'user',
+            sourceType: SourceType.USER,
             contents: post.contents,
             visibleOnlyToConnections: post.visibleOnlyToConnections,
             commentsOnlyByConnections: post.commentsOnlyByConnections,
@@ -114,7 +117,7 @@ export const createPost: RequestHandler<{
     };
     const post: Partial<IPost> = {
         sourceId: authUser?.id as string,
-        sourceType: 'user',
+        sourceType: SourceType.USER,
         contents: [postContent],
         visibleOnlyToConnections: body.visibleOnlyToConnections,
         commentsOnlyByConnections: body.commentsOnlyByConnections,
@@ -151,9 +154,12 @@ export const createPost: RequestHandler<{
         QueueUrl: ENV.AWS.FEEDS_SQS_URL,
     };
     await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
-    const response: HttpResponse<IPost> = {
+    const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(createdPost));
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
+    const createdPostInfo: IPostResponse = { ...createdPost, relatedSources: relatedUsersRes.data || [] };
+    const response: HttpResponse<IPostResponse> = {
         success: true,
-        data: createdPost,
+        data: createdPostInfo,
     };
     reply.status(200).send(response);
 };
@@ -182,9 +188,15 @@ export const updatePost: RequestHandler<{
         ...post,
         contents: [...post.contents, updatedPostContent],
     });
-    const response: HttpResponse<IPost> = {
+    if (!updatedPost) {
+        throw new HttpError(ErrorMessage.BadRequest, 400, ErrorCode.BadRequest);
+    }
+    const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(updatedPost));
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
+    const updatedPostInfo: IPostResponse = { ...updatedPost, relatedSources: relatedUsersRes.data || [] };
+    const response: HttpResponse<IPostResponse> = {
         success: true,
-        data: updatedPost,
+        data: updatedPostInfo,
     };
     reply.status(200).send(response);
 };
@@ -208,7 +220,7 @@ export const deletePost: RequestHandler<{
         throw new HttpError(ErrorMessage.InternalServerError, 500, ErrorCode.InternalServerError);
     }
     // TODO: Handle deletion of reacts and comments of post
-    const response: HttpResponse<IPost> = {
+    const response: HttpResponse = {
         success: true,
     };
     reply.status(200).send(response);
@@ -229,19 +241,26 @@ export const getPostReactions: RequestHandler<{
         limit,
         nextSearchStartFromKey ? (JSON.parse(decodeURI(nextSearchStartFromKey)) as ObjectType) : undefined
     );
+    const reactions = paginatedDocuments.documents as IReaction[];
     const relatedUserIds = new Set<string>();
     paginatedDocuments.documents?.forEach((reaction) => {
         relatedUserIds.add(reaction.sourceId as string);
+        const taggedUserIds = getSourceIdsFromSourceMarkups(
+            SourceType.USER,
+            getSourceMarkupsFromPostOrComment(reaction as IComment)
+        );
+        taggedUserIds.forEach((taggedUserId) => {
+            relatedUserIds.add(taggedUserId);
+        });
     });
-    const relatedUsers = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, Array.from(relatedUserIds));
-    const relatedUserIdUserMap = transformUsersListToUserIdUserMap(relatedUsers.data || []);
-    const postReactions = paginatedDocuments.documents?.map(
-        (reaction) =>
-            ({
-                ...reaction,
-                relatedSource: relatedUserIdUserMap[reaction.sourceId as string],
-            } as IPostReactionModel)
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(
+        ENV.AUTH_SERVICE_KEY,
+        Array.from(relatedUserIds)
     );
+    const postReactions: IPostReactionsResponse = {
+        reactions: reactions,
+        relatedSources: [...(relatedUsersRes.data || [])],
+    };
     const response: HttpResponse<IPostReactionsResponse> = {
         success: true,
         data: postReactions,
@@ -264,19 +283,31 @@ export const getPostComments: RequestHandler<{
         limit,
         nextSearchStartFromKey ? (JSON.parse(decodeURI(nextSearchStartFromKey)) as ObjectType) : undefined
     );
+
+    const comments = paginatedDocuments.documents;
     const relatedUserIds = new Set<string>();
-    paginatedDocuments.documents?.forEach((comment) => {
+    comments?.forEach((comment) => {
         relatedUserIds.add(comment.sourceId as string);
+
+        const taggedUserIds = getSourceIdsFromSourceMarkups(
+            SourceType.USER,
+            getSourceMarkupsFromPostOrComment(comment as IComment)
+        );
+        taggedUserIds.forEach((taggedUserId) => {
+            relatedUserIds.add(taggedUserId);
+        });
     });
-    const relatedUsers = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, Array.from(relatedUserIds));
-    const relatedUserIdUserMap = transformUsersListToUserIdUserMap(relatedUsers.data || []);
-    const postComments = paginatedDocuments.documents?.map(
-        (comment) =>
-            ({
-                ...comment,
-                relatedSource: relatedUserIdUserMap[comment.sourceId as string],
-            } as IPostCommentModel)
+
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(
+        ENV.AUTH_SERVICE_KEY,
+        Array.from(relatedUserIds)
     );
+
+    const postComments: IPostCommentsResponse = {
+        comments: comments as IComment[],
+        relatedSources: [...(relatedUsersRes.data || [])],
+    };
+
     const response: HttpResponse<IPostCommentsResponse> = {
         success: true,
         data: postComments,

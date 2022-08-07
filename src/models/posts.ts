@@ -1,18 +1,12 @@
 import mongoose, { Schema } from 'mongoose';
 import mongooseLeanVirtuals from 'mongoose-lean-virtuals';
 import { TABLE } from '../constants/db';
-import { IRelatedSource, ISourceType } from './shared';
-
-const RelatedSourceSchema = new Schema<IRelatedSource>({
-    sourceId: { type: String },
-    sourceType: { type: String },
-});
+import { ISourceType } from './shared';
 
 export interface IPostsContent {
     text: string;
     createdAt: Date;
     mediaUrls: string[];
-    relatedSources: IRelatedSource[];
     hashtags: string[];
 }
 const PostContentSchema = new Schema<IPostsContent>(
@@ -20,7 +14,6 @@ const PostContentSchema = new Schema<IPostsContent>(
         text: { type: String },
         createdAt: { type: Date },
         mediaUrls: { type: Array.of(String) },
-        relatedSources: { type: Array.of(RelatedSourceSchema) },
         hashtags: { type: Array.of(String) },
     },
     { id: false }

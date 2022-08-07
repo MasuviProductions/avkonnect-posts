@@ -2,19 +2,17 @@ import * as dynamoose from 'dynamoose';
 import { TABLE } from '../constants/db';
 import { IDynamooseDocument } from '../interfaces/app';
 import { IResourceType } from './reactions';
-import { IRelatedSource, ISourceType, RelatedSourceSchema } from './shared';
+import { ISourceType } from './shared';
 
 export interface ICommentContent {
     text: string;
     createdAt: Date;
     mediaUrls: string[];
-    relatedSources: IRelatedSource[];
 }
 const CommentContentSchema = new dynamoose.Schema({
     text: { type: String },
     createdAt: { type: Date },
     mediaUrls: { type: Array, schema: Array.of(String) },
-    relatedSources: { type: Array, schema: Array.of(RelatedSourceSchema) },
 });
 
 export interface IComment {
