@@ -1,6 +1,9 @@
 import { Query, Scan } from 'dynamoose/dist/DocumentRetriever';
 import { ObjectType } from 'dynamoose/dist/General';
 import { HttpDynamoDBResponsePagination, IDynamooseDocument } from '../../interfaces/app';
+import { IComment } from '../../models/comments';
+import { IReaction } from '../../models/reactions';
+import DB_QUERIES from './queries';
 
 const DYNAMODB_USER_SEARCH_SCAN_LIMIT = 20;
 
@@ -53,6 +56,20 @@ const fetchDynamoDBPaginatedDocuments = async <T extends { id: string }>(
         count: documents.length,
     };
     return { documents, dDBPagination };
+};
+
+export const getPrimaryPostComment = async (comment: IComment) => {
+    let primaryComment: IComment | IReaction | undefined;
+    if (comment.resourceType === 'post') {
+        primaryComment = comment;
+    } else if (comment.resourceType === 'comment') {
+        primaryComment = await DB_QUERIES.getCommentById(comment.resourceId);
+    }
+    if (!primaryComment) {
+        return undefined;
+    }
+    const post = await DB_QUERIES.getPostById(primaryComment?.resourceId);
+    return post;
 };
 
 const DB_HELPERS = { fetchDynamoDBPaginatedDocuments };

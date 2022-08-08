@@ -3,6 +3,7 @@ import { ObjectType } from 'dynamoose/dist/General';
 import { v4 } from 'uuid';
 import ENV from '../../../constants/env';
 import { ErrorMessage, ErrorCode } from '../../../constants/errors';
+import { INotificationActivity } from '../../../interfaces/api';
 import {
     RequestHandler,
     ICreateCommentRequest,
@@ -16,7 +17,7 @@ import { IActivity } from '../../../models/activities';
 import { IComment, ICommentContent } from '../../../models/comments';
 import { SourceType } from '../../../models/shared';
 import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
-import { throwErrorIfResourceNotFound } from '../../../utils/db/generic';
+import { getResourceBasedOnResourceType, isResouceAComment } from '../../../utils/db/generic';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
 import { getSourceIdsFromSourceMarkups, getSourceMarkupsFromPostOrComment } from '../../../utils/generic';
@@ -26,7 +27,8 @@ export const createComment: RequestHandler<{
     Body: ICreateCommentRequest;
 }> = async (request, reply) => {
     const { authUser, body } = request;
-    await throwErrorIfResourceNotFound(body.resourceType, body.resourceId);
+    const resource = await getResourceBasedOnResourceType(body.resourceType, body.resourceId);
+
     const currentTime = Date.now();
     const comment: IComment = {
         id: v4(),
@@ -41,6 +43,7 @@ export const createComment: RequestHandler<{
     if (!createdComment) {
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
     }
+
     const createdActivityForComment = await DB_QUERIES.createActivity({
         id: v4(),
         resourceId: createdComment.id,
@@ -64,18 +67,45 @@ export const createComment: RequestHandler<{
     if (!createdActivityForComment) {
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
     }
-    if (createdComment.resourceType === 'post') {
-        const feedsCommentEvent: IFeedsSQSEventRecord = {
-            eventType: 'generateFeeds',
-            resourceId: createdComment.id,
+
+    // NOTE: This comment is added to connections'/followers' feeds
+    const feedsCommentEvent: IFeedsSQSEventRecord = {
+        eventType: 'generateFeeds',
+        resourceId: createdComment.id,
+        resourceType: 'comment',
+    };
+    const feedsQueueParams: SQS.SendMessageRequest = {
+        MessageBody: JSON.stringify(feedsCommentEvent),
+        QueueUrl: ENV.AWS.FEEDS_SQS_URL,
+    };
+    await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
+
+    // NOTE: Notify the owner of the post regarding reactions
+    let notificationActivity: INotificationActivity;
+    if (isResouceAComment(resource)) {
+        notificationActivity = {
+            resourceId: resource?.id,
             resourceType: 'comment',
+            resourceActivity: 'commentComment',
+            sourceId: authUser?.id as string,
+            sourceType: SourceType.USER,
         };
-        const feedsQueueParams: SQS.SendMessageRequest = {
-            MessageBody: JSON.stringify(feedsCommentEvent),
-            QueueUrl: ENV.AWS.FEEDS_SQS_URL,
+    } else {
+        notificationActivity = {
+            resourceId: resource?.id,
+            resourceType: 'post',
+            resourceActivity: 'postComment',
+            sourceId: authUser?.id as string,
+            sourceType: SourceType.USER,
         };
-        await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
     }
+
+    const notificationQueueParams: SQS.SendMessageRequest = {
+        MessageBody: JSON.stringify(notificationActivity),
+        QueueUrl: ENV.AWS.NOTIFICATIONS_SQS_URL,
+    };
+    await SQS_QUEUE.sendMessage(notificationQueueParams).promise();
+
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(createdComment));
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
     const createdCommentInfo: ICommentResponse = {

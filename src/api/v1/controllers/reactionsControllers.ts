@@ -2,6 +2,7 @@ import { SQS } from 'aws-sdk';
 import { v4 } from 'uuid';
 import ENV from '../../../constants/env';
 import { ErrorMessage, ErrorCode } from '../../../constants/errors';
+import { INotificationActivity } from '../../../interfaces/api';
 import {
     RequestHandler,
     ICreateReactionRequest,
@@ -14,7 +15,7 @@ import { IActivity } from '../../../models/activities';
 import { REACTIONS, IReaction } from '../../../models/reactions';
 import { SourceType } from '../../../models/shared';
 import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
-import { throwErrorIfResourceNotFound } from '../../../utils/db/generic';
+import { getResourceBasedOnResourceType, isResouceAComment } from '../../../utils/db/generic';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
 import SQS_QUEUE from '../../../utils/queue';
@@ -28,7 +29,8 @@ export const createReaction: RequestHandler<{
     if (!REACTIONS.includes(body.reaction)) {
         throw new HttpError(ErrorMessage.InvalidReactionTypeError, 400, ErrorCode.InputError);
     }
-    await throwErrorIfResourceNotFound(body.resourceType, body.resourceId);
+    const resource = await getResourceBasedOnResourceType(body.resourceType, body.resourceId);
+
     const existingReaction = await DB_QUERIES.getReactionsBySourceForResource(
         userId,
         body.resourceId,
@@ -56,18 +58,42 @@ export const createReaction: RequestHandler<{
             },
         };
         await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivity);
-        if (reaction.resourceType === 'post') {
-            const feedsReactionEvent: IFeedsSQSEventRecord = {
-                eventType: 'generateFeeds',
-                resourceId: reaction.id,
-                resourceType: 'reaction',
+        // NOTE: This reactions is added to connections'/followers' feeds
+        const feedsReactionEvent: IFeedsSQSEventRecord = {
+            eventType: 'generateFeeds',
+            resourceId: reaction.id,
+            resourceType: 'reaction',
+        };
+        const feedsQueueParams: SQS.SendMessageRequest = {
+            MessageBody: JSON.stringify(feedsReactionEvent),
+            QueueUrl: ENV.AWS.FEEDS_SQS_URL,
+        };
+        await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
+
+        let notificationActivity: INotificationActivity | undefined;
+        // NOTE: Notify the owner of the post regarding reactions
+        if (isResouceAComment(resource)) {
+            notificationActivity = {
+                resourceId: resource.id,
+                resourceType: 'comment',
+                resourceActivity: 'commentReaction',
+                sourceId: userId,
+                sourceType: SourceType.USER,
             };
-            const feedsQueueParams: SQS.SendMessageRequest = {
-                MessageBody: JSON.stringify(feedsReactionEvent),
-                QueueUrl: ENV.AWS.FEEDS_SQS_URL,
+        } else {
+            notificationActivity = {
+                resourceId: resource.id,
+                resourceType: 'post',
+                resourceActivity: 'postReaction',
+                sourceId: userId,
+                sourceType: SourceType.USER,
             };
-            await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
         }
+        const notificationQueueParams: SQS.SendMessageRequest = {
+            MessageBody: JSON.stringify(notificationActivity),
+            QueueUrl: ENV.AWS.NOTIFICATIONS_SQS_URL,
+        };
+        await SQS_QUEUE.sendMessage(notificationQueueParams).promise();
     } else {
         if (existingReaction.reaction != body.reaction) {
             reaction = await DB_QUERIES.updateReactionTypeForReaction(

@@ -1,3 +1,21 @@
+import { ISourceType } from '../models/shared';
+
+export type INotificationResourceType = 'post' | 'comment' | 'connection' | 'broadcast';
+
+export type IConnectionActivity = 'connectionRequest' | 'connectionConfirmation';
+export type IPostActivity = 'postReaction' | 'postComment' | 'postCreation';
+export type ICommentActivity = 'commentReaction' | 'commentComment' | 'commentCreation';
+
+export type INotificationResourceActivity = IConnectionActivity | IPostActivity | ICommentActivity;
+
+export interface INotificationActivity {
+    resourceId: string;
+    resourceType: INotificationResourceType;
+    resourceActivity: INotificationResourceActivity;
+    sourceId: string;
+    sourceType: ISourceType;
+}
+
 export interface IConnectionApiModel {
     id: string;
     connectorId: string;
