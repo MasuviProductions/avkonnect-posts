@@ -95,6 +95,7 @@ export type IRelatedSource = Partial<IUserApiModel>;
 export interface IPostResponse extends IPost {
     relatedSources: IRelatedSource[];
 }
+export type IPostsResponse = Array<IPost>;
 
 export interface IUpdatePostRequest {
     content?: Omit<IPostsContent, 'createdAt'>;

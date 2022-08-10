@@ -16,6 +16,7 @@ import {
     IUpdatePostRequest,
     RequestHandler,
     IPostResponse,
+    IPostsResponse,
 } from '../../../interfaces/app';
 import { IComment, ICommentContent } from '../../../models/comments';
 import { IPost, IPostsContent } from '../../../models/posts';
@@ -31,6 +32,23 @@ import {
     transformCommentsListToResourceIdToCommentMap,
     transformReactionsListToResourceIdToReactionMap,
 } from '../../../utils/transformers';
+
+export const getUsersPosts: RequestHandler<{
+    Params: { userId: string };
+    Querystring: { page: number; size: number };
+}> = async (request, reply) => {
+    const {
+        params: { userId },
+    } = request;
+    const page = Number(request.query.page);
+    const size = Number(request.query.size);
+    const postsDocument = await DB_QUERIES.getPostsByUserId(userId, page, size);
+    const response: HttpResponse<IPostsResponse> = {
+        success: true,
+        data: postsDocument,
+    };
+    reply.status(200).send(response);
+};
 
 export const getPost: RequestHandler<{
     Params: { userId: string; postId: string };

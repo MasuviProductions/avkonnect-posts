@@ -13,6 +13,18 @@ const createPost = async (post: Partial<IPost>): Promise<IPost | undefined> => {
     return createdPost.toObject();
 };
 
+const getPostsByUserId = async (userId: string, page: number, size: number): Promise<Array<IPost>> => {
+    if (!page) {
+        page = 1;
+    }
+    if (!size) {
+        size = 4;
+    }
+    const skip = (page - 1) * size;
+    const postsQuey = await Post.find({ sourceId: userId }, {}, { limit: size, skip: skip });
+    return postsQuey;
+};
+
 const updatePost = async (postId: string, updatedPost: Partial<IPost>): Promise<IPost | undefined> => {
     const createdPost = await Post.findByIdAndUpdate(postId, updatedPost, { new: true });
     return createdPost?.toObject();
@@ -278,6 +290,7 @@ const DB_QUERIES = {
     getReactionByIdForSource,
     getReaction,
     deleteReaction,
+    getPostsByUserId,
     getReactionsForResource,
     createActivity,
     getActivityByResource,
