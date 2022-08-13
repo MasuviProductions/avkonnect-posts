@@ -187,6 +187,7 @@ export const createPost: RequestHandler<{
         QueueUrl: ENV.AWS.FEEDS_SQS_URL,
     };
     await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
+
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(createdPost));
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
     const createdPostInfo: IPostResponse = { ...createdPost, relatedSources: relatedUsersRes.data || [] };
