@@ -72,28 +72,30 @@ export const createReaction: RequestHandler<{
 
         let notificationActivity: INotificationActivity | undefined;
         // NOTE: Notify the owner of the post regarding reactions
-        if (isResouceAComment(resource)) {
-            notificationActivity = {
-                resourceId: resource.id,
-                resourceType: 'comment',
-                resourceActivity: 'commentReaction',
-                sourceId: userId,
-                sourceType: SourceType.USER,
+        if (resource.sourceId != authUser?.id) {
+            if (isResouceAComment(resource)) {
+                notificationActivity = {
+                    resourceId: resource.id,
+                    resourceType: 'comment',
+                    resourceActivity: 'commentReaction',
+                    sourceId: userId,
+                    sourceType: SourceType.USER,
+                };
+            } else {
+                notificationActivity = {
+                    resourceId: resource.id,
+                    resourceType: 'post',
+                    resourceActivity: 'postReaction',
+                    sourceId: userId,
+                    sourceType: SourceType.USER,
+                };
+            }
+            const notificationQueueParams: SQS.SendMessageRequest = {
+                MessageBody: JSON.stringify(notificationActivity),
+                QueueUrl: ENV.AWS.NOTIFICATIONS_SQS_URL,
             };
-        } else {
-            notificationActivity = {
-                resourceId: resource.id,
-                resourceType: 'post',
-                resourceActivity: 'postReaction',
-                sourceId: userId,
-                sourceType: SourceType.USER,
-            };
+            await SQS_QUEUE.sendMessage(notificationQueueParams).promise();
         }
-        const notificationQueueParams: SQS.SendMessageRequest = {
-            MessageBody: JSON.stringify(notificationActivity),
-            QueueUrl: ENV.AWS.NOTIFICATIONS_SQS_URL,
-        };
-        await SQS_QUEUE.sendMessage(notificationQueueParams).promise();
     } else {
         if (existingReaction.reaction != body.reaction) {
             reaction = await DB_QUERIES.updateReactionTypeForReaction(

@@ -84,31 +84,32 @@ export const createComment: RequestHandler<{
     };
     await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
 
-    // NOTE: Notify the owner of the post regarding reactions
-    let notificationActivity: INotificationActivity;
-    if (isResouceAComment(resource)) {
-        notificationActivity = {
-            resourceId: resource?.id,
-            resourceType: 'comment',
-            resourceActivity: 'commentComment',
-            sourceId: authUser?.id as string,
-            sourceType: SourceType.USER,
+    // NOTE: Notify the owner of the post regarding comments
+    if (resource.sourceId != authUser?.id) {
+        let notificationActivity: INotificationActivity;
+        if (isResouceAComment(resource)) {
+            notificationActivity = {
+                resourceId: resource?.id,
+                resourceType: 'comment',
+                resourceActivity: 'commentComment',
+                sourceId: authUser?.id as string,
+                sourceType: SourceType.USER,
+            };
+        } else {
+            notificationActivity = {
+                resourceId: resource?.id,
+                resourceType: 'post',
+                resourceActivity: 'postComment',
+                sourceId: authUser?.id as string,
+                sourceType: SourceType.USER,
+            };
+        }
+        const notificationQueueParams: SQS.SendMessageRequest = {
+            MessageBody: JSON.stringify(notificationActivity),
+            QueueUrl: ENV.AWS.NOTIFICATIONS_SQS_URL,
         };
-    } else {
-        notificationActivity = {
-            resourceId: resource?.id,
-            resourceType: 'post',
-            resourceActivity: 'postComment',
-            sourceId: authUser?.id as string,
-            sourceType: SourceType.USER,
-        };
+        await SQS_QUEUE.sendMessage(notificationQueueParams).promise();
     }
-
-    const notificationQueueParams: SQS.SendMessageRequest = {
-        MessageBody: JSON.stringify(notificationActivity),
-        QueueUrl: ENV.AWS.NOTIFICATIONS_SQS_URL,
-    };
-    await SQS_QUEUE.sendMessage(notificationQueueParams).promise();
 
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(createdComment));
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
