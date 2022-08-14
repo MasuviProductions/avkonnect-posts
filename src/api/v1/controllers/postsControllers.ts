@@ -16,7 +16,9 @@ import {
     IUpdatePostRequest,
     RequestHandler,
     IPostResponse,
+    IPostActivityResponse,
 } from '../../../interfaces/app';
+import { IActivity } from '../../../models/activities';
 import { IComment, ICommentContent } from '../../../models/comments';
 import { IPost, IPostsContent } from '../../../models/posts';
 import { IReaction, IReactionType } from '../../../models/reactions';
@@ -98,6 +100,8 @@ export const getPostsInfo: RequestHandler<{
             commentsCount: activity.commentsCount,
             sourceActivity: sourcePostInfoActivity,
             hashtags: post.hashtags,
+            isBanned: false,
+            isDeleted: false,
         };
 
         const taggedUserIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(post));
@@ -154,6 +158,7 @@ export const createPost: RequestHandler<{
             laugh: 0,
         },
         commentsCount: 0,
+        reportInfo: { reportCount: 0, sources: [] },
     });
     if (!createdActivity) {
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
@@ -333,6 +338,80 @@ export const getPostComments: RequestHandler<{
         success: true,
         data: postComments,
         dDBPagination: paginatedDocuments.dDBPagination,
+    };
+    reply.status(200).send(response);
+};
+
+export const getPostActivity: RequestHandler<{
+    Params: { postId: string };
+}> = async (request, reply) => {
+    const { postId } = request.params;
+    const postActivity = await DB_QUERIES.getActivityByResource(postId, 'post');
+    const response: HttpResponse<IPostActivityResponse> = {
+        success: true,
+        data: postActivity,
+    };
+    reply.status(200).send(response);
+};
+
+export const postBanPost: RequestHandler<{
+    Params: { postId: string };
+    Body: { banReason: string };
+}> = async (request, reply) => {
+    const {
+        authUser,
+        params: { postId },
+        body,
+    } = request;
+    if (!authUser) {
+        throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
+    }
+    // TODO: Check if authorized user is performing ban operation
+    const bannedPost = await DB_QUERIES.updatePost(postId, { isBanned: true });
+    const postActivity = await DB_QUERIES.getActivityByResource(postId, 'post');
+    await DB_QUERIES.updateActivity(postActivity.resourceId, postActivity.resourceType, {
+        banInfo: { sourceId: authUser.id, sourceType: SourceType.USER, banReason: body.banReason },
+    });
+    const response: HttpResponse<IPost> = {
+        success: true,
+        data: bannedPost,
+    };
+    reply.status(200).send(response);
+};
+
+export const postReportPost: RequestHandler<{
+    Params: { postId: string };
+    Body: { reportReason: string };
+}> = async (request, reply) => {
+    const {
+        authUser,
+        params: { postId },
+        body,
+    } = request;
+    if (!authUser) {
+        throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
+    }
+    // TODO: Check if authorized user is performing report operation
+    const postActivity = await DB_QUERIES.getActivityByResource(postId, 'post');
+    if (postActivity.reportInfo.sources.find((source) => source.sourceId === authUser.id)) {
+        throw new HttpError(ErrorMessage.ReportAlreadyReportedBySource, 400, ErrorCode.RedundantRequest);
+    }
+    const reportedActivity = await DB_QUERIES.updateActivity(postActivity.resourceId, postActivity.resourceType, {
+        reportInfo: {
+            reportCount: postActivity.reportInfo.reportCount + 1,
+            sources: [
+                ...postActivity.reportInfo.sources,
+                {
+                    sourceId: authUser.id,
+                    sourceType: SourceType.USER,
+                    reportReason: body.reportReason,
+                },
+            ],
+        },
+    });
+    const response: HttpResponse<IActivity> = {
+        success: true,
+        data: reportedActivity,
     };
     reply.status(200).send(response);
 };

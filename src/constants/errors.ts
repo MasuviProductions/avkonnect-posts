@@ -7,6 +7,7 @@ export enum ErrorCode {
     InputError = 'input_error',
     CreationError = 'creation_error',
     BadRequest = 'bad_request',
+    RedundantRequest = 'redundant_request',
 }
 
 export enum ErrorMessage {
@@ -18,4 +19,5 @@ export enum ErrorMessage {
     InvalidReactionTypeError = 'Reaction type is not valid',
     CreationError = 'Failed to create resource',
     BadRequest = 'Bad Request',
+    ReportAlreadyReportedBySource = 'This resource is already reported by source',
 }
