@@ -23,6 +23,8 @@ export interface IComment {
     resourceType: IResourceType;
     createdAt: Date;
     contents: ICommentContent[]; // project to gsi
+    isDeleted: boolean;
+    isBanned: boolean;
 }
 const CommentsSchema = new dynamoose.Schema({
     sourceId: { type: String, hashKey: true }, // partition key
@@ -35,6 +37,8 @@ const CommentsSchema = new dynamoose.Schema({
     resourceType: { type: String }, // sort key- gsi
     createdAt: { type: Date, rangeKey: true }, // sort key
     contents: { type: Array, schema: Array.of(CommentContentSchema) },
+    isDeleted: { type: Boolean, default: false },
+    isBanned: { type: Boolean, default: false },
 });
 const Comment = dynamoose.model<IDynamooseDocument<IComment>>(TABLE.COMMENTS, CommentsSchema);
 

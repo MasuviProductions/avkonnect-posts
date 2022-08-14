@@ -35,12 +35,13 @@ const getPostsByIds = async (postsIdList: Set<string>): Promise<Array<IPost>> =>
     return posts;
 };
 
-const deletePostById = async (postId: string) => {
-    const post = await Post.findByIdAndDelete(postId).exec();
+const deletePostById = async (postId: string): Promise<IPost | undefined> => {
+    const postToDelete: Partial<IPost> = { isDeleted: true };
+    const post = await updatePost(postId, postToDelete);
     if (!post) {
         return undefined;
     }
-    return post.toObject();
+    return post;
 };
 
 const createComment = async (comment: IComment): Promise<IComment | undefined> => {
@@ -57,7 +58,7 @@ const getCommentById = async (commentId: string): Promise<IComment | undefined> 
 const updateComment = async (
     sourceId: string,
     createdAt: Date,
-    updatedComment: Pick<IComment, 'contents'>
+    updatedComment: Partial<Pick<IComment, 'contents' | 'isDeleted' | 'isBanned'>>
 ): Promise<IComment | undefined> => {
     const comment = await Comment.update({ sourceId: sourceId, createdAt: createdAt.getTime() }, updatedComment);
     return comment;
@@ -124,7 +125,7 @@ const getCommentsByResourceIdsForSource = async (
 };
 
 const deleteComment = async (sourceId: string, createdAt: Date): Promise<void> => {
-    await Comment.delete({ sourceId: sourceId, createdAt: createdAt.getTime() });
+    await updateComment(sourceId, createdAt, { isDeleted: true });
 };
 
 const createReaction = async (reaction: IReaction): Promise<IReaction | undefined> => {
@@ -233,7 +234,7 @@ const createActivity = async (activity: IActivity): Promise<IActivity> => {
 const updateActivity = async (
     resourceId: string,
     resourceType: IResourceType,
-    activity: Partial<Pick<IActivity, 'commentsCount' | 'reactions'>>
+    activity: Partial<Pick<IActivity, 'commentsCount' | 'reactions' | 'banInfo' | 'reportInfo'>>
 ): Promise<IActivity> => {
     const updatedActivity = await Activity.update({ resourceId: resourceId, resourceType: resourceType }, activity);
     return updatedActivity;

@@ -12,6 +12,7 @@ import {
     IFeedsSQSEventRecord,
     ICommentResponse,
     ICommentCommentsResponse,
+    ICommentActivityResponse,
 } from '../../../interfaces/app';
 import { IActivity } from '../../../models/activities';
 import { IComment, ICommentContent } from '../../../models/comments';
@@ -38,6 +39,8 @@ export const createComment: RequestHandler<{
         resourceId: body.resourceId,
         resourceType: body.resourceType,
         contents: [{ ...body.comment, createdAt: new Date(currentTime) }],
+        isBanned: false,
+        isDeleted: false,
     };
     const createdComment = await DB_QUERIES.createComment(comment);
     if (!createdComment) {
@@ -56,6 +59,7 @@ export const createComment: RequestHandler<{
             laugh: 0,
         },
         commentsCount: 0,
+        reportInfo: { reportCount: 0, sources: [] },
     });
 
     const activity = await DB_QUERIES.getActivityByResource(body.resourceId, body.resourceType);
@@ -262,6 +266,85 @@ export const getCommentComments: RequestHandler<{
         success: true,
         data: commentsInfo,
         dDBPagination: paginatedDocuments.dDBPagination,
+    };
+    reply.status(200).send(response);
+};
+
+export const getCommentActivity: RequestHandler<{
+    Params: { commentId: string };
+}> = async (request, reply) => {
+    const { commentId } = request.params;
+    const commentActivity = await DB_QUERIES.getActivityByResource(commentId, 'comment');
+    const response: HttpResponse<ICommentActivityResponse> = {
+        success: true,
+        data: commentActivity,
+    };
+    reply.status(200).send(response);
+};
+
+export const postBanComment: RequestHandler<{
+    Params: { commentId: string };
+    Body: { banReason: string };
+}> = async (request, reply) => {
+    const {
+        authUser,
+        params: { commentId },
+        body,
+    } = request;
+
+    if (!authUser) {
+        throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
+    }
+    // TODO: Check if authorized user is performing ban operation
+    const comment = await DB_QUERIES.getCommentById(commentId);
+    if (!comment) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+    const bannedPost = await DB_QUERIES.updateComment(comment.sourceId, comment.createdAt, { isBanned: true });
+    const postActivity = await DB_QUERIES.getActivityByResource(commentId, 'comment');
+    await DB_QUERIES.updateActivity(postActivity.resourceId, postActivity.resourceType, {
+        banInfo: { sourceId: authUser.id, sourceType: SourceType.USER, banReason: body.banReason },
+    });
+    const response: HttpResponse<IComment> = {
+        success: true,
+        data: bannedPost,
+    };
+    reply.status(200).send(response);
+};
+
+export const postReportComment: RequestHandler<{
+    Params: { commentId: string };
+    Body: { reportReason: string };
+}> = async (request, reply) => {
+    const {
+        authUser,
+        params: { commentId },
+        body,
+    } = request;
+    if (!authUser) {
+        throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
+    }
+    // TODO: Check if authorized user is performing report operation
+    const commentActivity = await DB_QUERIES.getActivityByResource(commentId, 'comment');
+    if (commentActivity.reportInfo.sources.find((source) => source.sourceId === authUser.id)) {
+        throw new HttpError(ErrorMessage.ReportAlreadyReportedBySource, 400, ErrorCode.RedundantRequest);
+    }
+    const reportedActivity = await DB_QUERIES.updateActivity(commentActivity.resourceId, commentActivity.resourceType, {
+        reportInfo: {
+            reportCount: commentActivity.reportInfo.reportCount + 1,
+            sources: [
+                ...commentActivity.reportInfo.sources,
+                {
+                    sourceId: authUser.id,
+                    sourceType: SourceType.USER,
+                    reportReason: body.reportReason,
+                },
+            ],
+        },
+    });
+    const response: HttpResponse<IActivity> = {
+        success: true,
+        data: reportedActivity,
     };
     reply.status(200).send(response);
 };

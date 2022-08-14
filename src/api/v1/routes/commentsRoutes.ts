@@ -6,6 +6,9 @@ import {
     updateComment,
     getCommentComments,
     getComment,
+    getCommentActivity,
+    postBanComment,
+    postReportComment,
 } from '../controllers/commentsControllers';
 
 const initializeCommentsRoutes = (
@@ -13,11 +16,14 @@ const initializeCommentsRoutes = (
     _opts?: FastifyRegisterOptions<FastifyPluginOptions>,
     done?: () => void
 ) => {
+    fastify.get('/comments/:commentId/activity', { preHandler: [authHandler] }, getCommentActivity);
     fastify.post('/comments', { preHandler: [authHandler] }, createComment);
     fastify.get('/comments/:commentId', { preHandler: [authHandler] }, getComment);
     fastify.delete('/comments/:commentId', { preHandler: [authHandler] }, deleteComment);
     fastify.patch('/comments/:commentId', { preHandler: [authHandler] }, updateComment);
     fastify.get('/comments/:commentId/comments', { preHandler: [authHandler] }, getCommentComments);
+    fastify.post('/comments/:commentId/ban', { preHandler: [authHandler] }, postBanComment);
+    fastify.post('/comments/:commentId/report', { preHandler: [authHandler] }, postReportComment);
 
     done?.();
 };

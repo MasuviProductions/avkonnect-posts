@@ -10,6 +10,7 @@ import {
     preHandlerAsyncHookHandler,
 } from 'fastify';
 import { ReplyGenericInterface } from 'fastify/types/reply';
+import { IActivity } from '../models/activities';
 import { IComment, ICommentContent } from '../models/comments';
 import { IPost, IPostsContent } from '../models/posts';
 import { IReaction, IReactionType, IResourceType } from '../models/reactions';
@@ -134,6 +135,8 @@ export interface IPostCommentsResponse {
     relatedSources: Array<IRelatedSource>;
 }
 
+export type IPostActivityResponse = IActivity;
+
 export interface ICommentResponse extends IComment {
     relatedSources: IRelatedSource[];
 }
@@ -142,6 +145,8 @@ export interface ICommentCommentsResponse {
     comments: Array<IComment>;
     relatedSources: Array<IRelatedSource>;
 }
+
+export type ICommentActivityResponse = IActivity;
 
 export interface IReactionResponse extends IReaction {
     relatedSource: IRelatedSource;
