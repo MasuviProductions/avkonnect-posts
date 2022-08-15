@@ -271,13 +271,6 @@ export const getPostReactions: RequestHandler<{
     const relatedUserIds = new Set<string>();
     paginatedDocuments.documents?.forEach((reaction) => {
         relatedUserIds.add(reaction.sourceId as string);
-        const taggedUserIds = getSourceIdsFromSourceMarkups(
-            SourceType.USER,
-            getSourceMarkupsFromPostOrComment(reaction as IComment)
-        );
-        taggedUserIds.forEach((taggedUserId) => {
-            relatedUserIds.add(taggedUserId);
-        });
     });
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(
         ENV.AUTH_SERVICE_KEY,
