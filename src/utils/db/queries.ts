@@ -99,6 +99,9 @@ const getCommentsByResourceIdsForSource = async (
     limit: number,
     nextSearchStartFromKey?: ObjectType
 ): Promise<{ documents: Array<Partial<IComment>> | undefined; dDBPagination: HttpDynamoDBResponsePagination }> => {
+    if (resourceIdsList.size <= 0) {
+        return { documents: [], dDBPagination: { count: 0 } };
+    }
     const commentsQuery = Comment.query('sourceId')
         .eq(sourceId)
         .and()
@@ -213,6 +216,9 @@ const getReactionsByResourceIdsForSource = async (
     resourceIdsList: Set<string>,
     resourceType: IResourceType
 ): Promise<Array<IReaction>> => {
+    if (resourceIdsList.size <= 0) {
+        return [];
+    }
     const reactions = await Reaction.query('sourceId')
         .eq(sourceId)
         .and()
@@ -249,6 +255,9 @@ const getActivitiesByResourceIds = async (
     resourceIdList: Set<string>,
     resourceType: IResourceType
 ): Promise<Array<IActivity>> => {
+    if (resourceIdList.size <= 0) {
+        return [];
+    }
     const activities = await Activity.batchGet(
         Array.from(resourceIdList).map((resourceId) => ({
             resourceId: resourceId,
