@@ -171,24 +171,23 @@ export const deleteReaction: RequestHandler<{
     } = request;
     const userId = authUser?.id as string;
     const existingReaction = await DB_QUERIES.getReactionByIdForSource(reactionId, userId);
-    if (existingReaction) {
-        await DB_QUERIES.deleteReaction(userId, existingReaction.createdAt);
-        const activity = await DB_QUERIES.getActivityByResource(
-            existingReaction.resourceId,
-            existingReaction.resourceType
-        );
-        if (!activity) {
-            throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
-        }
-
-        const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
-            reactionsCount: {
-                ...activity.reactionsCount,
-                [existingReaction.reaction]: activity.reactionsCount[existingReaction.reaction] - 1,
-            },
-        };
-        await DB_QUERIES.updateActivity(existingReaction.resourceId, existingReaction.resourceType, updatedActivity);
+    if (!existingReaction) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
+    await DB_QUERIES.deleteReaction(userId, existingReaction.createdAt);
+    const activity = await DB_QUERIES.getActivityByResource(existingReaction.resourceId, existingReaction.resourceType);
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
+    const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
+        reactionsCount: {
+            ...activity.reactionsCount,
+            [existingReaction.reaction]: activity.reactionsCount[existingReaction.reaction] - 1,
+        },
+    };
+    await DB_QUERIES.updateActivity(existingReaction.resourceId, existingReaction.resourceType, updatedActivity);
+
     const response: HttpResponse = {
         success: true,
     };
