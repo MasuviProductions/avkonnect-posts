@@ -17,6 +17,7 @@ import {
     RequestHandler,
     IPostResponse,
     IPostActivityResponse,
+    ICommentApiModel,
 } from '../../../interfaces/app';
 import { IActivity } from '../../../models/activities';
 import { IComment, ICommentContent } from '../../../models/comments';
@@ -44,9 +45,13 @@ export const getPost: RequestHandler<{
     if (!post) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
+
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(post));
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
-    const postInfo: IPostResponse = { ...post, relatedSources: relatedUsersRes.data || [] };
+
+    const activity = await DB_QUERIES.getActivityByResource(post.id, 'post');
+
+    const postInfo: IPostResponse = { ...post, activity, relatedSources: relatedUsersRes.data || [] };
     const response: HttpResponse<IPostResponse> = {
         success: true,
         data: postInfo,
@@ -96,8 +101,7 @@ export const getPostsInfo: RequestHandler<{
             contents: post.contents,
             visibleOnlyToConnections: post.visibleOnlyToConnections,
             commentsOnlyByConnections: post.commentsOnlyByConnections,
-            reactionsCount: activity.reactions,
-            commentsCount: activity.commentsCount,
+            activity: activity,
             sourceActivity: sourcePostInfoActivity,
             hashtags: post.hashtags,
             isBanned: false,
@@ -177,7 +181,11 @@ export const createPost: RequestHandler<{
 
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(createdPost));
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
-    const createdPostInfo: IPostResponse = { ...createdPost, relatedSources: relatedUsersRes.data || [] };
+    const createdPostInfo: IPostResponse = {
+        ...createdPost,
+        activity: createdActivity,
+        relatedSources: relatedUsersRes.data || [],
+    };
     const response: HttpResponse<IPostResponse> = {
         success: true,
         data: createdPostInfo,
@@ -217,9 +225,14 @@ export const updatePost: RequestHandler<{
     if (!updatedPost) {
         throw new HttpError(ErrorMessage.BadRequest, 400, ErrorCode.BadRequest);
     }
+    const activity = await DB_QUERIES.getActivityByResource(updatedPost.id as string, 'post');
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(updatedPost));
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
-    const updatedPostInfo: IPostResponse = { ...updatedPost, relatedSources: relatedUsersRes.data || [] };
+    const updatedPostInfo: IPostResponse = {
+        ...updatedPost,
+        activity: activity,
+        relatedSources: relatedUsersRes.data || [],
+    };
     const response: HttpResponse<IPostResponse> = {
         success: true,
         data: updatedPostInfo,
@@ -304,8 +317,10 @@ export const getPostComments: RequestHandler<{
     );
 
     const comments = paginatedDocuments.documents;
+    const commentIds: Set<string> = new Set();
     const relatedUserIds = new Set<string>();
     comments?.forEach((comment) => {
+        commentIds.add(comment.id as string);
         relatedUserIds.add(comment.sourceId as string);
 
         const taggedUserIds = getSourceIdsFromSourceMarkups(
@@ -317,13 +332,20 @@ export const getPostComments: RequestHandler<{
         });
     });
 
+    const activities = await DB_QUERIES.getActivitiesByResourceIds(commentIds, 'comment');
+
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(
         ENV.AUTH_SERVICE_KEY,
         Array.from(relatedUserIds)
     );
 
+    const commentsWithActivity: ICommentApiModel[] | undefined = comments?.map((comment) => {
+        const activity = activities.find((act) => act.resourceId === comment.id);
+        return { ...(comment as IComment), activity: activity as IActivity };
+    });
+
     const postComments: IPostCommentsResponse = {
-        comments: comments as IComment[],
+        comments: commentsWithActivity || [],
         relatedSources: [...(relatedUsersRes.data || [])],
     };
 

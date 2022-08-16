@@ -93,7 +93,11 @@ export interface ICreatePostRequest {
 
 export type IRelatedSource = Partial<IUserApiModel>;
 
-export interface IPostResponse extends IPost {
+export interface IPostApiModel extends IPost {
+    activity: IActivity;
+}
+
+export interface IPostResponse extends IPostApiModel {
     relatedSources: IRelatedSource[];
 }
 
@@ -107,10 +111,8 @@ export interface IPostInfoSourceActivity {
     sourceReaction?: IReactionType;
 }
 
-export interface IPostsInfo extends Omit<IPost, 'id'> {
+export interface IPostsInfo extends Omit<IPostApiModel, 'id'> {
     postId: string;
-    reactionsCount: Record<IReactionType, number>;
-    commentsCount: number;
     sourceActivity?: IPostInfoSourceActivity;
 }
 
@@ -130,19 +132,23 @@ export interface IPostReactionsResponse {
     relatedSources: Array<IRelatedSource>;
 }
 
+export interface ICommentApiModel extends IComment {
+    activity: IActivity;
+}
+
 export interface IPostCommentsResponse {
-    comments: Array<IComment>;
+    comments: Array<ICommentApiModel>;
     relatedSources: Array<IRelatedSource>;
 }
 
 export type IPostActivityResponse = IActivity;
 
-export interface ICommentResponse extends IComment {
+export interface ICommentResponse extends ICommentApiModel {
     relatedSources: IRelatedSource[];
 }
 
 export interface ICommentCommentsResponse {
-    comments: Array<IComment>;
+    comments: Array<ICommentApiModel>;
     relatedSources: Array<IRelatedSource>;
 }
 

@@ -13,6 +13,7 @@ import {
     ICommentResponse,
     ICommentCommentsResponse,
     ICommentActivityResponse,
+    ICommentApiModel,
 } from '../../../interfaces/app';
 import { IActivity } from '../../../models/activities';
 import { IComment, ICommentContent } from '../../../models/comments';
@@ -104,6 +105,7 @@ export const createComment: RequestHandler<{
                 sourceType: SourceType.USER,
             };
         }
+
         const notificationQueueParams: SQS.SendMessageRequest = {
             MessageBody: JSON.stringify(notificationActivity),
             QueueUrl: ENV.AWS.NOTIFICATIONS_SQS_URL,
@@ -115,6 +117,7 @@ export const createComment: RequestHandler<{
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
     const createdCommentInfo: ICommentResponse = {
         ...createdComment,
+        activity: createdActivityForComment,
         relatedSources: [...(relatedUsersRes.data || [])],
     };
     const response: HttpResponse<ICommentResponse> = {
@@ -134,10 +137,12 @@ export const getComment: RequestHandler<{
     if (!comment) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
+    const activity = await DB_QUERIES.getActivityByResource(comment.id, 'comment');
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(comment));
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
     const commentInfo: ICommentResponse = {
         ...comment,
+        activity,
         relatedSources: [...(relatedUsersRes.data || [])],
     };
     const response: HttpResponse<ICommentResponse> = {
@@ -170,10 +175,13 @@ export const updateComment: RequestHandler<{
     if (!updatedComment) {
         throw new HttpError(ErrorMessage.BadRequest, 400, ErrorCode.BadRequest);
     }
+    const activity = await DB_QUERIES.getActivityByResource(comment.id, 'comment');
+
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(updatedComment));
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
     const updatedCommentInfo: ICommentResponse = {
         ...updatedComment,
+        activity,
         relatedSources: [...(relatedUsersRes.data || [])],
     };
     const response: HttpResponse<ICommentResponse> = {
@@ -240,8 +248,10 @@ export const getCommentComments: RequestHandler<{
     );
 
     const comments = paginatedDocuments.documents;
+    const commentIds: Set<string> = new Set();
     const relatedUserIds = new Set<string>();
     comments?.forEach((comment) => {
+        commentIds.add(comment.id as string);
         relatedUserIds.add(comment.sourceId as string);
 
         const taggedUserIds = getSourceIdsFromSourceMarkups(
@@ -252,14 +262,20 @@ export const getCommentComments: RequestHandler<{
             relatedUserIds.add(taggedUserId);
         });
     });
+    const activities = await DB_QUERIES.getActivitiesByResourceIds(commentIds, 'comment');
 
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(
         ENV.AUTH_SERVICE_KEY,
         Array.from(relatedUserIds)
     );
 
+    const commentsWithActivity: ICommentApiModel[] | undefined = comments?.map((comment) => {
+        const activity = activities.find((act) => act.resourceId === comment.id);
+        return { ...(comment as IComment), activity: activity as IActivity };
+    });
+
     const commentsInfo: ICommentCommentsResponse = {
-        comments: comments as IComment[],
+        comments: commentsWithActivity || [],
         relatedSources: [...(relatedUsersRes.data || [])],
     };
 
