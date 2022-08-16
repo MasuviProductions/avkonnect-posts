@@ -36,7 +36,14 @@ export const createReaction: RequestHandler<{
         body.resourceId,
         body.resourceType
     );
+
+    const activity = await DB_QUERIES.getActivityByResource(body.resourceId, body.resourceType);
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
     let reaction: IReaction | undefined = existingReaction;
+
     if (!existingReaction) {
         reaction = await DB_QUERIES.createReaction({
             id: v4(),
@@ -49,10 +56,6 @@ export const createReaction: RequestHandler<{
         });
         if (!reaction) {
             throw new HttpError(ErrorMessage.InvalidReactionTypeError, 400, ErrorCode.InputError);
-        }
-        const activity = await DB_QUERIES.getActivityByResource(body.resourceId, body.resourceType);
-        if (!activity) {
-            throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
         }
 
         const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
@@ -107,6 +110,14 @@ export const createReaction: RequestHandler<{
                 existingReaction.createdAt,
                 body.reaction
             );
+            const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
+                reactionsCount: {
+                    ...activity.reactionsCount,
+                    [body.reaction]: activity.reactionsCount[body.reaction] + 1,
+                    [existingReaction.reaction]: activity.reactionsCount[existingReaction.reaction] - 1,
+                },
+            };
+            await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivity);
         }
     }
     if (!reaction) {
