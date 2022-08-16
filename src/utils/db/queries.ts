@@ -240,13 +240,16 @@ const createActivity = async (activity: IActivity): Promise<IActivity> => {
 const updateActivity = async (
     resourceId: string,
     resourceType: IResourceType,
-    activity: Partial<Pick<IActivity, 'commentsCount' | 'reactions' | 'banInfo' | 'reportInfo'>>
+    activity: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount' | 'banInfo' | 'reportInfo'>>
 ): Promise<IActivity> => {
     const updatedActivity = await Activity.update({ resourceId: resourceId, resourceType: resourceType }, activity);
     return updatedActivity;
 };
 
-const getActivityByResource = async (resourceId: string, resourceType: IResourceType): Promise<IActivity> => {
+const getActivityByResource = async (
+    resourceId: string,
+    resourceType: IResourceType
+): Promise<IActivity | undefined> => {
     const activity = await Activity.get({ resourceId, resourceType });
     return activity;
 };

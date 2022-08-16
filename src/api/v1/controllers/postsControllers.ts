@@ -50,6 +50,9 @@ export const getPost: RequestHandler<{
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
 
     const activity = await DB_QUERIES.getActivityByResource(post.id, 'post');
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
 
     const postInfo: IPostResponse = { ...post, activity, relatedSources: relatedUsersRes.data || [] };
     const response: HttpResponse<IPostResponse> = {
@@ -154,7 +157,7 @@ export const createPost: RequestHandler<{
         id: v4(),
         resourceId: createdPost.id,
         resourceType: 'post',
-        reactions: {
+        reactionsCount: {
             like: 0,
             support: 0,
             sad: 0,
@@ -226,6 +229,10 @@ export const updatePost: RequestHandler<{
         throw new HttpError(ErrorMessage.BadRequest, 400, ErrorCode.BadRequest);
     }
     const activity = await DB_QUERIES.getActivityByResource(updatedPost.id as string, 'post');
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(updatedPost));
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
     const updatedPostInfo: IPostResponse = {
@@ -384,6 +391,10 @@ export const postBanPost: RequestHandler<{
     // TODO: Check if authorized user is performing ban operation
     const bannedPost = await DB_QUERIES.updatePost(postId, { isBanned: true });
     const postActivity = await DB_QUERIES.getActivityByResource(postId, 'post');
+    if (!postActivity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
     await DB_QUERIES.updateActivity(postActivity.resourceId, postActivity.resourceType, {
         banInfo: { sourceId: authUser.id, sourceType: SourceType.USER, banReason: body.banReason },
     });
@@ -408,9 +419,14 @@ export const postReportPost: RequestHandler<{
     }
     // TODO: Check if authorized user is performing report operation
     const postActivity = await DB_QUERIES.getActivityByResource(postId, 'post');
+    if (!postActivity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
     if (postActivity.reportInfo.sources.find((source) => source.sourceId === authUser.id)) {
         throw new HttpError(ErrorMessage.ReportAlreadyReportedBySource, 400, ErrorCode.RedundantRequest);
     }
+
     const reportedActivity = await DB_QUERIES.updateActivity(postActivity.resourceId, postActivity.resourceType, {
         reportInfo: {
             reportCount: postActivity.reportInfo.reportCount + 1,

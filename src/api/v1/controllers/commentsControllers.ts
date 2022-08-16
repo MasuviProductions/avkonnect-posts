@@ -52,7 +52,7 @@ export const createComment: RequestHandler<{
         id: v4(),
         resourceId: createdComment.id,
         resourceType: 'comment',
-        reactions: {
+        reactionsCount: {
             like: 0,
             support: 0,
             sad: 0,
@@ -64,7 +64,11 @@ export const createComment: RequestHandler<{
     });
 
     const activity = await DB_QUERIES.getActivityByResource(body.resourceId, body.resourceType);
-    const updatedActivityForResource: Partial<Pick<IActivity, 'commentsCount' | 'reactions'>> = {
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
+    const updatedActivityForResource: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
         commentsCount: activity.commentsCount + 1,
     };
     await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivityForResource);
@@ -138,6 +142,10 @@ export const getComment: RequestHandler<{
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
     const activity = await DB_QUERIES.getActivityByResource(comment.id, 'comment');
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(comment));
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
     const commentInfo: ICommentResponse = {
@@ -176,6 +184,9 @@ export const updateComment: RequestHandler<{
         throw new HttpError(ErrorMessage.BadRequest, 400, ErrorCode.BadRequest);
     }
     const activity = await DB_QUERIES.getActivityByResource(comment.id, 'comment');
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
 
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(updatedComment));
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
@@ -220,7 +231,10 @@ export const deleteComment: RequestHandler<{
     await DB_QUERIES.deleteComment(comment.sourceId, comment.createdAt);
 
     const activity = await DB_QUERIES.getActivityByResource(comment.resourceId, comment.resourceType);
-    const updatedActivityForResource: Partial<Pick<IActivity, 'commentsCount' | 'reactions'>> = {
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+    const updatedActivityForResource: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
         commentsCount: activity.commentsCount - 1,
     };
     await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivityForResource);
@@ -292,6 +306,9 @@ export const getCommentActivity: RequestHandler<{
 }> = async (request, reply) => {
     const { commentId } = request.params;
     const commentActivity = await DB_QUERIES.getActivityByResource(commentId, 'comment');
+    if (!commentActivity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
     const response: HttpResponse<ICommentActivityResponse> = {
         success: true,
         data: commentActivity,
@@ -318,8 +335,12 @@ export const postBanComment: RequestHandler<{
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
     const bannedPost = await DB_QUERIES.updateComment(comment.sourceId, comment.createdAt, { isBanned: true });
-    const postActivity = await DB_QUERIES.getActivityByResource(commentId, 'comment');
-    await DB_QUERIES.updateActivity(postActivity.resourceId, postActivity.resourceType, {
+    const commentActivity = await DB_QUERIES.getActivityByResource(commentId, 'comment');
+    if (!commentActivity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
+    await DB_QUERIES.updateActivity(commentActivity.resourceId, commentActivity.resourceType, {
         banInfo: { sourceId: authUser.id, sourceType: SourceType.USER, banReason: body.banReason },
     });
     const response: HttpResponse<IComment> = {
@@ -343,6 +364,10 @@ export const postReportComment: RequestHandler<{
     }
     // TODO: Check if authorized user is performing report operation
     const commentActivity = await DB_QUERIES.getActivityByResource(commentId, 'comment');
+    if (!commentActivity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
     if (commentActivity.reportInfo.sources.find((source) => source.sourceId === authUser.id)) {
         throw new HttpError(ErrorMessage.ReportAlreadyReportedBySource, 400, ErrorCode.RedundantRequest);
     }

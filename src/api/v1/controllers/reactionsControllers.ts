@@ -51,10 +51,14 @@ export const createReaction: RequestHandler<{
             throw new HttpError(ErrorMessage.InvalidReactionTypeError, 400, ErrorCode.InputError);
         }
         const activity = await DB_QUERIES.getActivityByResource(body.resourceId, body.resourceType);
-        const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactions'>> = {
-            reactions: {
-                ...activity.reactions,
-                [body.reaction]: activity.reactions[body.reaction] + 1,
+        if (!activity) {
+            throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+        }
+
+        const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
+            reactionsCount: {
+                ...activity.reactionsCount,
+                [body.reaction]: activity.reactionsCount[body.reaction] + 1,
             },
         };
         await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivity);
@@ -162,10 +166,14 @@ export const deleteReaction: RequestHandler<{
             existingReaction.resourceId,
             existingReaction.resourceType
         );
-        const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactions'>> = {
-            reactions: {
-                ...activity.reactions,
-                [existingReaction.reaction]: activity.reactions[existingReaction.reaction] - 1,
+        if (!activity) {
+            throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+        }
+
+        const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
+            reactionsCount: {
+                ...activity.reactionsCount,
+                [existingReaction.reaction]: activity.reactionsCount[existingReaction.reaction] - 1,
             },
         };
         await DB_QUERIES.updateActivity(existingReaction.resourceId, existingReaction.resourceType, updatedActivity);
