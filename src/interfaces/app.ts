@@ -95,6 +95,7 @@ export type IRelatedSource = Partial<IUserApiModel>;
 
 export interface IPostApiModel extends IPost {
     activity: IActivity;
+    sourceActivity?: ISourceActivity;
 }
 
 export interface IPostResponse extends IPostApiModel {
@@ -106,14 +107,13 @@ export interface IUpdatePostRequest {
     hashtags?: Array<string>;
 }
 
-export interface IPostInfoSourceActivity {
-    sourceComments?: ICommentContent[];
-    sourceReaction?: IReactionType;
+export interface ISourceActivity {
+    comments?: ICommentContent[];
+    reaction?: IReactionType;
 }
 
 export interface IPostsInfo extends Omit<IPostApiModel, 'id'> {
     postId: string;
-    sourceActivity?: IPostInfoSourceActivity;
 }
 
 export interface IPostsInfoRequest {
@@ -134,6 +134,7 @@ export interface IPostReactionsResponse {
 
 export interface ICommentApiModel extends IComment {
     activity: IActivity;
+    sourceActivity?: ISourceActivity;
 }
 
 export interface IPostCommentsResponse {

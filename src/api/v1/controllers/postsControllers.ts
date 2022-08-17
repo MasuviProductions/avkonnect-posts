@@ -7,7 +7,6 @@ import {
     HttpResponse,
     ICreatePostRequest,
     IFeedsSQSEventRecord,
-    IPostInfoSourceActivity,
     IPostReactionsResponse,
     IPostCommentsResponse,
     IPostsInfo,
@@ -25,21 +24,19 @@ import { IPost, IPostsContent } from '../../../models/posts';
 import { IReaction, IReactionType } from '../../../models/reactions';
 import { SourceType } from '../../../models/shared';
 import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
+import { getSourceActivityForResources } from '../../../utils/db/generic';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
 import { getSourceIdsFromSourceMarkups, getSourceMarkupsFromPostOrComment } from '../../../utils/generic';
 import SQS_QUEUE from '../../../utils/queue';
-import {
-    transformActivitiesListToResourceIdToActivityMap,
-    transformCommentsListToResourceIdToCommentMap,
-    transformReactionsListToResourceIdToReactionMap,
-} from '../../../utils/transformers';
+import { transformActivitiesListToResourceIdToActivityMap } from '../../../utils/transformers';
 
 export const getPost: RequestHandler<{
-    Params: { userId: string; postId: string };
+    Params: { postId: string };
 }> = async (request, reply) => {
     const {
         params: { postId },
+        authUser,
     } = request;
     const post = await DB_QUERIES.getPostById(postId);
     if (!post) {
@@ -55,7 +52,18 @@ export const getPost: RequestHandler<{
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
 
-    const postInfo: IPostResponse = { ...post, activity, relatedSources: relatedUsersRes.data || [] };
+    const { sourceReactions, sourceComments } = await getSourceActivityForResources(
+        authUser?.id as string,
+        new Set([postId]),
+        'post'
+    );
+
+    const postInfo: IPostResponse = {
+        ...post,
+        activity,
+        sourceActivity: { reaction: sourceReactions?.[post.id]?.reaction, comments: sourceComments?.[post.id] },
+        relatedSources: relatedUsersRes.data || [],
+    };
     const response: HttpResponse<IPostResponse> = {
         success: true,
         data: postInfo,
@@ -75,27 +83,19 @@ export const getPostsInfo: RequestHandler<{
     }
     const postsActivities = await DB_QUERIES.getActivitiesByResourceIds(postIds, 'post');
     const postIdToActivitiesMap = transformActivitiesListToResourceIdToActivityMap(postsActivities);
-    let sourceReactions: Record<string, IReaction>;
-    let sourceComments: Record<string, Array<ICommentContent>>;
+    let sourceReactions: Record<string, IReaction> | undefined;
+    let sourceComments: Record<string, Array<ICommentContent>> | undefined;
 
     if (userId) {
-        const postReactions = await DB_QUERIES.getReactionsByResourceIdsForSource(userId, postIds, 'post');
-        sourceReactions = transformReactionsListToResourceIdToReactionMap(postReactions);
-
-        const postComments = await DB_QUERIES.getCommentsByResourceIdsForSource(userId, postIds, 'post', 5);
-        sourceComments = transformCommentsListToResourceIdToCommentMap(postComments.documents as Array<IComment>);
+        const sourceActivities = await getSourceActivityForResources(userId, postIds, 'post');
+        sourceReactions = sourceActivities.sourceReactions;
+        sourceComments = sourceActivities.sourceComments;
     }
 
     const relatedUserIds: Array<string> = [];
     const postsInfo: Array<IPostsInfo> = [];
     posts.forEach((post) => {
         const activity = postIdToActivitiesMap[post.id];
-        let sourcePostInfoActivity: IPostInfoSourceActivity | undefined = undefined;
-        const sourcePostReaction = sourceReactions?.[post.id]?.reaction;
-        const sourcePostComments = sourceComments?.[post.id];
-        if (sourcePostReaction || sourcePostComments) {
-            sourcePostInfoActivity = { sourceReaction: sourcePostReaction, sourceComments: sourcePostComments };
-        }
         const postInfo: IPostsInfo = {
             postId: post.id,
             createdAt: post.createdAt,
@@ -106,7 +106,10 @@ export const getPostsInfo: RequestHandler<{
             visibleOnlyToConnections: post.visibleOnlyToConnections,
             commentsOnlyByConnections: post.commentsOnlyByConnections,
             activity: activity,
-            sourceActivity: sourcePostInfoActivity,
+            sourceActivity: {
+                reaction: sourceReactions?.[post.id]?.reaction,
+                comments: sourceComments?.[post.id],
+            },
             hashtags: post.hashtags,
             isBanned: false,
             isDeleted: false,
@@ -239,11 +242,20 @@ export const updatePost: RequestHandler<{
 
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(updatedPost));
     userIds.push(updatedPost.sourceId);
-
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
+
+    const { sourceReactions, sourceComments } = await getSourceActivityForResources(
+        authUser.id,
+        new Set([postId]),
+        'post'
+    );
     const updatedPostInfo: IPostResponse = {
         ...updatedPost,
         activity: activity,
+        sourceActivity: {
+            reaction: sourceReactions?.[updatedPost.id]?.reaction,
+            comments: sourceComments?.[updatedPost.id],
+        },
         relatedSources: relatedUsersRes.data || [],
     };
     const response: HttpResponse<IPostResponse> = {
@@ -321,6 +333,7 @@ export const getPostComments: RequestHandler<{
     const {
         params: { postId },
         query: { limit, nextSearchStartFromKey },
+        authUser,
     } = request;
     const paginatedDocuments = await DB_QUERIES.getCommentsForResource(
         'post',
@@ -352,9 +365,15 @@ export const getPostComments: RequestHandler<{
         Array.from(relatedUserIds)
     );
 
+    const { sourceReactions } = await getSourceActivityForResources(authUser?.id as string, commentIds, 'comment');
+
     const commentsWithActivity: ICommentApiModel[] | undefined = comments?.map((comment) => {
         const activity = activities.find((act) => act.resourceId === comment.id);
-        return { ...(comment as IComment), activity: activity as IActivity };
+        return {
+            ...(comment as IComment),
+            sourceActivity: { reaction: sourceReactions?.[(comment as IComment).id]?.reaction },
+            activity: activity as IActivity,
+        };
     });
 
     const postComments: IPostCommentsResponse = {

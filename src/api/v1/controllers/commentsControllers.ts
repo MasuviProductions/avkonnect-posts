@@ -19,7 +19,11 @@ import { IActivity } from '../../../models/activities';
 import { IComment, ICommentContent } from '../../../models/comments';
 import { SourceType } from '../../../models/shared';
 import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
-import { getResourceBasedOnResourceType, isResouceAComment } from '../../../utils/db/generic';
+import {
+    getResourceBasedOnResourceType,
+    getSourceActivityForResources,
+    isResouceAComment,
+} from '../../../utils/db/generic';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
 import { getSourceIdsFromSourceMarkups, getSourceMarkupsFromPostOrComment } from '../../../utils/generic';
@@ -137,6 +141,7 @@ export const getComment: RequestHandler<{
 }> = async (request, reply) => {
     const {
         params: { commentId },
+        authUser,
     } = request;
     const comment = await DB_QUERIES.getCommentById(commentId);
     if (!comment) {
@@ -150,9 +155,18 @@ export const getComment: RequestHandler<{
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(comment));
     userIds.push(comment.sourceId);
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
+
+    const { sourceReactions } = await getSourceActivityForResources(
+        authUser?.id as string,
+        new Set([comment.id]),
+        'comment'
+    );
+
     const commentInfo: ICommentResponse = {
         ...comment,
         activity,
+        sourceActivity: { reaction: sourceReactions?.[comment.id]?.reaction },
+
         relatedSources: [...(relatedUsersRes.data || [])],
     };
     const response: HttpResponse<ICommentResponse> = {
@@ -193,9 +207,17 @@ export const updateComment: RequestHandler<{
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(updatedComment));
     userIds.push(updatedComment.sourceId);
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
+
+    const { sourceReactions } = await getSourceActivityForResources(
+        authUser?.id as string,
+        new Set([comment.id]),
+        'comment'
+    );
+
     const updatedCommentInfo: ICommentResponse = {
         ...updatedComment,
         activity,
+        sourceActivity: { reaction: sourceReactions?.[updatedComment.id]?.reaction },
         relatedSources: [...(relatedUsersRes.data || [])],
     };
     const response: HttpResponse<ICommentResponse> = {
@@ -256,6 +278,7 @@ export const getCommentComments: RequestHandler<{
     const {
         params: { commentId },
         query: { limit, nextSearchStartFromKey },
+        authUser,
     } = request;
     const paginatedDocuments = await DB_QUERIES.getCommentsForResource(
         'comment',
@@ -286,9 +309,15 @@ export const getCommentComments: RequestHandler<{
         Array.from(relatedUserIds)
     );
 
+    const { sourceReactions } = await getSourceActivityForResources(authUser?.id as string, commentIds, 'comment');
+
     const commentsWithActivity: ICommentApiModel[] | undefined = comments?.map((comment) => {
         const activity = activities.find((act) => act.resourceId === comment.id);
-        return { ...(comment as IComment), activity: activity as IActivity };
+        return {
+            ...(comment as IComment),
+            sourceActivity: { reaction: sourceReactions?.[(comment as IComment).id]?.reaction },
+            activity: activity as IActivity,
+        };
     });
 
     const commentsInfo: ICommentCommentsResponse = {
