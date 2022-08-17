@@ -118,6 +118,7 @@ export const createComment: RequestHandler<{
     }
 
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(createdComment));
+    userIds.push(createdComment.sourceId);
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
     const createdCommentInfo: ICommentResponse = {
         ...createdComment,
@@ -147,6 +148,7 @@ export const getComment: RequestHandler<{
     }
 
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(comment));
+    userIds.push(comment.sourceId);
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
     const commentInfo: ICommentResponse = {
         ...comment,
@@ -189,6 +191,7 @@ export const updateComment: RequestHandler<{
     }
 
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(updatedComment));
+    userIds.push(updatedComment.sourceId);
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
     const updatedCommentInfo: ICommentResponse = {
         ...updatedComment,

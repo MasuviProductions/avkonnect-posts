@@ -47,6 +47,7 @@ export const getPost: RequestHandler<{
     }
 
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(post));
+    userIds.push(post.sourceId);
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
 
     const activity = await DB_QUERIES.getActivityByResource(post.id, 'post');
@@ -111,6 +112,7 @@ export const getPostsInfo: RequestHandler<{
             isDeleted: false,
         };
 
+        relatedUserIds.push(post.sourceId);
         const taggedUserIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(post));
         taggedUserIds.forEach((userId) => {
             relatedUserIds.push(userId);
@@ -183,7 +185,9 @@ export const createPost: RequestHandler<{
     await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
 
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(createdPost));
+    userIds.push(createdPost.sourceId);
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
+
     const createdPostInfo: IPostResponse = {
         ...createdPost,
         activity: createdActivity,
@@ -234,6 +238,8 @@ export const updatePost: RequestHandler<{
     }
 
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(updatedPost));
+    userIds.push(updatedPost.sourceId);
+
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
     const updatedPostInfo: IPostResponse = {
         ...updatedPost,
