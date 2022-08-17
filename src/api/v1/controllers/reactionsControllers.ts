@@ -163,14 +163,20 @@ export const getReaction: RequestHandler<{
 };
 
 export const deleteReaction: RequestHandler<{
-    Params: { reactionId: string };
+    Body: Omit<ICreateReactionRequest, 'reaction'>;
 }> = async (request, reply) => {
     const {
         authUser,
-        params: { reactionId },
+        body: { resourceId, resourceType },
     } = request;
     const userId = authUser?.id as string;
-    const existingReaction = await DB_QUERIES.getReactionByIdForSource(reactionId, userId);
+
+    const [existingReaction] = await DB_QUERIES.getReactionsByResourceIdsForSource(
+        authUser?.id as string,
+        new Set([resourceId]),
+        resourceType
+    );
+    // const existingReaction = await DB_QUERIES.getReactionByIdForSource(reactionId, userId);
     if (!existingReaction) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
