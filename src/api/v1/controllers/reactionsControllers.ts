@@ -12,7 +12,7 @@ import {
     IRelatedSource,
 } from '../../../interfaces/app';
 import { IActivity } from '../../../models/activities';
-import { REACTIONS, IReaction } from '../../../models/reactions';
+import { REACTIONS, IReaction, IResourceType } from '../../../models/reactions';
 import { SourceType } from '../../../models/shared';
 import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
 import { getResourceBasedOnResourceType, isResouceAComment } from '../../../utils/db/generic';
@@ -163,19 +163,18 @@ export const getReaction: RequestHandler<{
 };
 
 export const deleteReaction: RequestHandler<{
-    Body: Omit<ICreateReactionRequest, 'reaction'>;
+    Params: { resourceType: IResourceType; resourceId: string };
 }> = async (request, reply) => {
     const {
         authUser,
-        body: { resourceId, resourceType },
+        params: { resourceId, resourceType },
     } = request;
     const userId = authUser?.id as string;
 
-    const [existingReaction] = await DB_QUERIES.getReactionsByResourceIdsForSource(
-        authUser?.id as string,
-        new Set([resourceId]),
-        resourceType
-    );
+    await getResourceBasedOnResourceType(resourceType, resourceId);
+
+    const existingReaction = await DB_QUERIES.getReactionsBySourceForResource(userId, resourceId, resourceType);
+
     // const existingReaction = await DB_QUERIES.getReactionByIdForSource(reactionId, userId);
     if (!existingReaction) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
