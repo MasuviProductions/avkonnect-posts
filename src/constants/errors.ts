@@ -18,6 +18,7 @@ export enum ErrorMessage {
     InvalidResourceTypeError = 'Resource type is not valid',
     InvalidReactionTypeError = 'Reaction type is not valid',
     CreationError = 'Failed to create resource',
+    CommentCreationDepthError = 'Depth exceeded for comment creation',
     BadRequest = 'Bad Request',
     ReportAlreadyReportedBySource = 'This resource is already reported by source',
     RequireSourceInfo = 'Source information is required for request using service token',

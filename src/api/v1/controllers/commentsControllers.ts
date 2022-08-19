@@ -17,6 +17,7 @@ import {
 } from '../../../interfaces/app';
 import { IActivity } from '../../../models/activities';
 import { IComment, ICommentContent } from '../../../models/comments';
+import { IResourceType } from '../../../models/reactions';
 import { SourceType } from '../../../models/shared';
 import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
 import {
@@ -34,6 +35,12 @@ export const createComment: RequestHandler<{
 }> = async (request, reply) => {
     const { authUser, body } = request;
     const resource = await getResourceBasedOnResourceType(body.resourceType, body.resourceId);
+
+    if (isResouceAComment(resource)) {
+        if (resource.resourceType === 'comment') {
+            throw new HttpError(ErrorMessage.CommentCreationDepthError, 400, ErrorCode.CreationError);
+        }
+    }
 
     const currentTime = Date.now();
     const comment: IComment = {
@@ -67,18 +74,30 @@ export const createComment: RequestHandler<{
         reportInfo: { reportCount: 0, sources: [] },
     });
 
-    const activity = await DB_QUERIES.getActivityByResource(body.resourceId, body.resourceType);
-    if (!activity) {
-        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
-    }
-
-    const updatedActivityForResource: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
-        commentsCount: activity.commentsCount + 1,
-    };
-    await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivityForResource);
-
     if (!createdActivityForComment) {
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
+    }
+
+    const incrementCommentCountInActivity = async (resourceId: string, resourceType: IResourceType) => {
+        const activity = await DB_QUERIES.getActivityByResource(resourceId, resourceType);
+        if (!activity) {
+            throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+        }
+
+        const updatedActivityForResource: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
+            commentsCount: activity.commentsCount + 1,
+        };
+        await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivityForResource);
+
+        if (!createdActivityForComment) {
+            throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
+        }
+    };
+
+    await incrementCommentCountInActivity(body.resourceId, body.resourceType);
+    if (isResouceAComment(resource)) {
+        // Update comment count for parent post
+        await incrementCommentCountInActivity(resource.resourceId, resource.resourceType);
     }
 
     // NOTE: This comment is added to connections'/followers' feeds
