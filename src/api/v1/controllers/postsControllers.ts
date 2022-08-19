@@ -22,7 +22,7 @@ import { IActivity } from '../../../models/activities';
 import { IComment, ICommentContent } from '../../../models/comments';
 import { IPost, IPostsContent } from '../../../models/posts';
 import { IReaction, IReactionType } from '../../../models/reactions';
-import { ISourceType, SourceType } from '../../../models/shared';
+import { SourceType } from '../../../models/shared';
 import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
 import { getSourceActivityForResources } from '../../../utils/db/generic';
 import DB_QUERIES from '../../../utils/db/queries';
@@ -33,17 +33,13 @@ import { transformActivitiesListToResourceIdToActivityMap } from '../../../utils
 
 export const getPost: RequestHandler<{
     Params: { postId: string };
-    Querystring: { sourceId?: string; sourceType?: ISourceType };
 }> = async (request, reply) => {
     const {
         params: { postId },
-        query,
         authUser,
     } = request;
-    if (!(authUser || (query.sourceId && query.sourceType))) {
-        throw new HttpError(ErrorMessage.RequireSourceInfo, 400, ErrorCode.BadRequest);
-    }
-    const userId = authUser?.id || query.sourceId;
+
+    const userId = authUser?.id;
     const post = await DB_QUERIES.getPostById(postId);
     if (!post) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
@@ -58,11 +54,13 @@ export const getPost: RequestHandler<{
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
 
-    const { sourceReactions, sourceComments } = await getSourceActivityForResources(
-        userId as string,
-        new Set([postId]),
-        'post'
-    );
+    let sourceComments: Record<string, ICommentContent[]> | undefined;
+    let sourceReactions: Record<string, IReaction> | undefined;
+    if (userId) {
+        const sourceActivities = await getSourceActivityForResources(userId as string, new Set([postId]), 'post');
+        sourceComments = sourceActivities.sourceComments;
+        sourceReactions = sourceActivities.sourceReactions;
+    }
 
     const postInfo: IPostResponse = {
         ...post,
