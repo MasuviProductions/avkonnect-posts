@@ -20,4 +20,5 @@ export enum ErrorMessage {
     CreationError = 'Failed to create resource',
     BadRequest = 'Bad Request',
     ReportAlreadyReportedBySource = 'This resource is already reported by source',
+    RequireSourceInfo = 'Source information is required for request using service token',
 }

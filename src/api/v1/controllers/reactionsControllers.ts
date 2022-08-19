@@ -175,7 +175,6 @@ export const deleteReaction: RequestHandler<{
 
     const existingReaction = await DB_QUERIES.getReactionsBySourceForResource(userId, resourceId, resourceType);
 
-    // const existingReaction = await DB_QUERIES.getReactionByIdForSource(reactionId, userId);
     if (!existingReaction) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
