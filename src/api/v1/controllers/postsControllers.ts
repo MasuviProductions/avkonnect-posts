@@ -35,17 +35,18 @@ import {
 
 export const getUsersPosts: RequestHandler<{
     Params: { userId: string };
-    Querystring: { page: number; size: number };
+    Querystring: { page: number; limit: number };
 }> = async (request, reply) => {
     const {
         params: { userId },
     } = request;
     const page = Number(request.query.page);
-    const size = Number(request.query.size);
-    const postsDocument = await DB_QUERIES.getPostsByUserId(userId, page, size);
+    const limit = Number(request.query.limit);
+    const { posts, pagination } = await DB_QUERIES.getPostsByUserId(userId, page, limit);
     const response: HttpResponse<IPostsResponse> = {
         success: true,
-        data: postsDocument,
+        data: posts as Array<IPost>,
+        pagination: pagination,
     };
     reply.status(200).send(response);
 };

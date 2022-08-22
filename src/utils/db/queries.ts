@@ -13,16 +13,15 @@ const createPost = async (post: Partial<IPost>): Promise<IPost | undefined> => {
     return createdPost.toObject();
 };
 
-const getPostsByUserId = async (userId: string, page: number, size: number): Promise<Array<IPost>> => {
-    if (!page) {
-        page = 1;
-    }
-    if (!size) {
-        size = 4;
-    }
-    const skip = (page - 1) * size;
-    const postsQuey = await Post.find({ sourceId: userId }, {}, { limit: size, skip: skip });
-    return postsQuey;
+const getPostsByUserId = async (userId: string, page: number, limit: number) => {
+    const postsQuery = Post.find({ sourceId: userId });
+    const { documents: posts, pagination } = await DB_HELPERS.fetchMongoDBPaginatedDocuments<IPost>(
+        postsQuery,
+        ['sourceId'],
+        page,
+        limit
+    );
+    return { posts, pagination };
 };
 
 const updatePost = async (postId: string, updatedPost: Partial<IPost>): Promise<IPost | undefined> => {
