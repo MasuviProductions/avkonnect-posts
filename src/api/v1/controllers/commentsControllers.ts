@@ -17,7 +17,7 @@ import {
 } from '../../../interfaces/app';
 import { IActivity } from '../../../models/activities';
 import { IComment, ICommentContent } from '../../../models/comments';
-import { IResourceType } from '../../../models/reactions';
+import { IReaction, IResourceType } from '../../../models/reactions';
 import { SourceType } from '../../../models/shared';
 import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
 import {
@@ -162,6 +162,7 @@ export const getComment: RequestHandler<{
         params: { commentId },
         authUser,
     } = request;
+    const userId = authUser?.id;
     const comment = await DB_QUERIES.getCommentById(commentId);
     if (!comment) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
@@ -175,17 +176,16 @@ export const getComment: RequestHandler<{
     userIds.push(comment.sourceId);
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
 
-    const { sourceReactions } = await getSourceActivityForResources(
-        authUser?.id as string,
-        new Set([comment.id]),
-        'comment'
-    );
+    let sourceReactions: Record<string, IReaction> | undefined;
+    if (userId) {
+        const sourceActivities = await getSourceActivityForResources(userId, new Set([comment.id]), 'comment');
+        sourceReactions = sourceActivities.sourceReactions;
+    }
 
     const commentInfo: ICommentResponse = {
         ...comment,
         activity,
         sourceActivity: { reaction: sourceReactions?.[comment.id]?.reaction },
-
         relatedSources: [...(relatedUsersRes.data || [])],
     };
     const response: HttpResponse<ICommentResponse> = {
