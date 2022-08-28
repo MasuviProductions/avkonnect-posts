@@ -1,8 +1,12 @@
 import { ErrorCode, ErrorMessage } from '../../constants/errors';
-import { IComment } from '../../models/comments';
+import { IComment, ICommentContent } from '../../models/comments';
 import { IPost } from '../../models/posts';
-import { IResourceType } from '../../models/reactions';
+import { IReaction, IResourceType } from '../../models/reactions';
 import { HttpError } from '../error';
+import {
+    transformCommentsListToResourceIdToCommentMap,
+    transformReactionsListToResourceIdToReactionMap,
+} from '../transformers';
 import DB_QUERIES from './queries';
 
 export const getResourceBasedOnResourceType = async (
@@ -32,4 +36,27 @@ export const getResourceBasedOnResourceType = async (
 
 export const isResouceAComment = (resource: IPost | IComment): resource is IComment => {
     return (resource as IComment).resourceType != undefined;
+};
+
+export const getSourceActivityForResources = async (
+    userId: string,
+    resourceIds: Set<string>,
+    resourceType: IResourceType
+): Promise<{
+    sourceReactions?: Record<string, IReaction>;
+    sourceComments?: Record<string, Array<ICommentContent>>;
+}> => {
+    const postReactions = await DB_QUERIES.getReactionsByResourceIdsForSource(userId, resourceIds, resourceType);
+    const sourceReactions: Record<string, IReaction> = transformReactionsListToResourceIdToReactionMap(postReactions);
+
+    if (resourceType === 'comment') {
+        return { sourceReactions, sourceComments: undefined };
+    }
+
+    const postComments = await DB_QUERIES.getCommentsByResourceIdsForSource(userId, resourceIds, resourceType, 5);
+    const sourceComments: Record<string, Array<ICommentContent>> = transformCommentsListToResourceIdToCommentMap(
+        postComments.documents as Array<IComment>
+    );
+
+    return { sourceReactions, sourceComments };
 };

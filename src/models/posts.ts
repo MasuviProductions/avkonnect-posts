@@ -27,6 +27,8 @@ export interface IPost {
     hashtags: Array<string>;
     visibleOnlyToConnections: boolean;
     commentsOnlyByConnections: boolean;
+    isDeleted: boolean;
+    isBanned: boolean;
 }
 const PostsSchema = new Schema(
     {
@@ -39,6 +41,8 @@ const PostsSchema = new Schema(
         hashtags: { type: Array.of(String) },
         visibleOnlyToConnections: { type: Boolean, required: true },
         commentsOnlyByConnections: { type: Boolean, required: true },
+        isDeleted: { type: Boolean, default: false },
+        isBanned: { type: Boolean, default: false },
     },
     {
         timestamps: true,
@@ -57,6 +61,8 @@ PostsSchema.set('toObject', {
         delete ret._id;
     },
 });
+
+export const READABLE_USER_PROPERTIES = ['id', 'sourceId'] as const;
 
 PostsSchema.plugin(mongooseLeanVirtuals);
 

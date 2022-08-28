@@ -17,10 +17,25 @@ const getPostsByUserId = async (userId: string, page: number, limit: number) => 
     const postsQuery = Post.find({ sourceId: userId });
     const { documents: posts, pagination } = await DB_HELPERS.fetchMongoDBPaginatedDocuments<IPost>(
         postsQuery,
-        ['sourceId'],
+        [
+            'sourceId',
+            '_id',
+            'createdAt',
+            'updatedAt',
+            'sourceType',
+            'contents',
+            'visibleOnlyToConnections',
+            'commentsOnlyByConnections',
+            'activity',
+            'sourceActivity',
+            'hashtags',
+            'isBanned',
+            'isDeleted',
+        ],
         page,
         limit
     );
+    // console.log('posts info: ', posts[1].id);
     return { posts, pagination };
 };
 
@@ -46,12 +61,13 @@ const getPostsByIds = async (postsIdList: Set<string>): Promise<Array<IPost>> =>
     return posts;
 };
 
-const deletePostById = async (postId: string) => {
-    const post = await Post.findByIdAndDelete(postId).exec();
+const deletePostById = async (postId: string): Promise<IPost | undefined> => {
+    const postToDelete: Partial<IPost> = { isDeleted: true };
+    const post = await updatePost(postId, postToDelete);
     if (!post) {
         return undefined;
     }
-    return post.toObject();
+    return post;
 };
 
 const createComment = async (comment: IComment): Promise<IComment | undefined> => {
@@ -68,7 +84,7 @@ const getCommentById = async (commentId: string): Promise<IComment | undefined> 
 const updateComment = async (
     sourceId: string,
     createdAt: Date,
-    updatedComment: Pick<IComment, 'contents'>
+    updatedComment: Partial<Pick<IComment, 'contents' | 'isDeleted' | 'isBanned'>>
 ): Promise<IComment | undefined> => {
     const comment = await Comment.update({ sourceId: sourceId, createdAt: createdAt.getTime() }, updatedComment);
     return comment;
@@ -95,8 +111,8 @@ const getCommentsForResource = async (
     );
 
     if (paginatedDocuments.dDBPagination.nextSearchStartFromKey) {
-        paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt = (
-            paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt as Date
+        paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt = new Date(
+            paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt
         ).getTime();
     }
     return paginatedDocuments;
@@ -109,6 +125,9 @@ const getCommentsByResourceIdsForSource = async (
     limit: number,
     nextSearchStartFromKey?: ObjectType
 ): Promise<{ documents: Array<Partial<IComment>> | undefined; dDBPagination: HttpDynamoDBResponsePagination }> => {
+    if (resourceIdsList.size <= 0) {
+        return { documents: [], dDBPagination: { count: 0 } };
+    }
     const commentsQuery = Comment.query('sourceId')
         .eq(sourceId)
         .and()
@@ -127,15 +146,15 @@ const getCommentsByResourceIdsForSource = async (
     );
 
     if (paginatedDocuments.dDBPagination.nextSearchStartFromKey) {
-        paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt = (
-            paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt as Date
+        paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt = new Date(
+            paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt
         ).getTime();
     }
     return paginatedDocuments;
 };
 
 const deleteComment = async (sourceId: string, createdAt: Date): Promise<void> => {
-    await Comment.delete({ sourceId: sourceId, createdAt: createdAt.getTime() });
+    await updateComment(sourceId, createdAt, { isDeleted: true });
 };
 
 const createReaction = async (reaction: IReaction): Promise<IReaction | undefined> => {
@@ -166,8 +185,8 @@ const getReactionsForResource = async (
     );
 
     if (paginatedDocuments.dDBPagination.nextSearchStartFromKey) {
-        paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt = (
-            paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt as Date
+        paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt = new Date(
+            paginatedDocuments.dDBPagination.nextSearchStartFromKey.createdAt
         ).getTime();
     }
 
@@ -223,6 +242,9 @@ const getReactionsByResourceIdsForSource = async (
     resourceIdsList: Set<string>,
     resourceType: IResourceType
 ): Promise<Array<IReaction>> => {
+    if (resourceIdsList.size <= 0) {
+        return [];
+    }
     const reactions = await Reaction.query('sourceId')
         .eq(sourceId)
         .and()
@@ -244,13 +266,16 @@ const createActivity = async (activity: IActivity): Promise<IActivity> => {
 const updateActivity = async (
     resourceId: string,
     resourceType: IResourceType,
-    activity: Partial<Pick<IActivity, 'commentsCount' | 'reactions'>>
+    activity: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount' | 'banInfo' | 'reportInfo'>>
 ): Promise<IActivity> => {
     const updatedActivity = await Activity.update({ resourceId: resourceId, resourceType: resourceType }, activity);
     return updatedActivity;
 };
 
-const getActivityByResource = async (resourceId: string, resourceType: IResourceType): Promise<IActivity> => {
+const getActivityByResource = async (
+    resourceId: string,
+    resourceType: IResourceType
+): Promise<IActivity | undefined> => {
     const activity = await Activity.get({ resourceId, resourceType });
     return activity;
 };
@@ -259,6 +284,9 @@ const getActivitiesByResourceIds = async (
     resourceIdList: Set<string>,
     resourceType: IResourceType
 ): Promise<Array<IActivity>> => {
+    if (resourceIdList.size <= 0) {
+        return [];
+    }
     const activities = await Activity.batchGet(
         Array.from(resourceIdList).map((resourceId) => ({
             resourceId: resourceId,

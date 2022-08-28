@@ -12,7 +12,7 @@ import {
     IRelatedSource,
 } from '../../../interfaces/app';
 import { IActivity } from '../../../models/activities';
-import { REACTIONS, IReaction } from '../../../models/reactions';
+import { REACTIONS, IReaction, IResourceType } from '../../../models/reactions';
 import { SourceType } from '../../../models/shared';
 import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
 import { getResourceBasedOnResourceType, isResouceAComment } from '../../../utils/db/generic';
@@ -36,7 +36,14 @@ export const createReaction: RequestHandler<{
         body.resourceId,
         body.resourceType
     );
+
+    const activity = await DB_QUERIES.getActivityByResource(body.resourceId, body.resourceType);
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
     let reaction: IReaction | undefined = existingReaction;
+
     if (!existingReaction) {
         reaction = await DB_QUERIES.createReaction({
             id: v4(),
@@ -50,11 +57,11 @@ export const createReaction: RequestHandler<{
         if (!reaction) {
             throw new HttpError(ErrorMessage.InvalidReactionTypeError, 400, ErrorCode.InputError);
         }
-        const activity = await DB_QUERIES.getActivityByResource(body.resourceId, body.resourceType);
-        const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactions'>> = {
-            reactions: {
-                ...activity.reactions,
-                [body.reaction]: activity.reactions[body.reaction] + 1,
+
+        const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
+            reactionsCount: {
+                ...activity.reactionsCount,
+                [body.reaction]: activity.reactionsCount[body.reaction] + 1,
             },
         };
         await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivity);
@@ -72,28 +79,30 @@ export const createReaction: RequestHandler<{
 
         let notificationActivity: INotificationActivity | undefined;
         // NOTE: Notify the owner of the post regarding reactions
-        if (isResouceAComment(resource)) {
-            notificationActivity = {
-                resourceId: resource.id,
-                resourceType: 'comment',
-                resourceActivity: 'commentReaction',
-                sourceId: userId,
-                sourceType: SourceType.USER,
+        if (resource.sourceId != authUser?.id) {
+            if (isResouceAComment(resource)) {
+                notificationActivity = {
+                    resourceId: resource.id,
+                    resourceType: 'comment',
+                    resourceActivity: 'commentReaction',
+                    sourceId: userId,
+                    sourceType: SourceType.USER,
+                };
+            } else {
+                notificationActivity = {
+                    resourceId: resource.id,
+                    resourceType: 'post',
+                    resourceActivity: 'postReaction',
+                    sourceId: userId,
+                    sourceType: SourceType.USER,
+                };
+            }
+            const notificationQueueParams: SQS.SendMessageRequest = {
+                MessageBody: JSON.stringify(notificationActivity),
+                QueueUrl: ENV.AWS.NOTIFICATIONS_SQS_URL,
             };
-        } else {
-            notificationActivity = {
-                resourceId: resource.id,
-                resourceType: 'post',
-                resourceActivity: 'postReaction',
-                sourceId: userId,
-                sourceType: SourceType.USER,
-            };
+            await SQS_QUEUE.sendMessage(notificationQueueParams).promise();
         }
-        const notificationQueueParams: SQS.SendMessageRequest = {
-            MessageBody: JSON.stringify(notificationActivity),
-            QueueUrl: ENV.AWS.NOTIFICATIONS_SQS_URL,
-        };
-        await SQS_QUEUE.sendMessage(notificationQueueParams).promise();
     } else {
         if (existingReaction.reaction != body.reaction) {
             reaction = await DB_QUERIES.updateReactionTypeForReaction(
@@ -101,6 +110,14 @@ export const createReaction: RequestHandler<{
                 existingReaction.createdAt,
                 body.reaction
             );
+            const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
+                reactionsCount: {
+                    ...activity.reactionsCount,
+                    [body.reaction]: activity.reactionsCount[body.reaction] + 1,
+                    [existingReaction.reaction]: activity.reactionsCount[existingReaction.reaction] - 1,
+                },
+            };
+            await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivity);
         }
     }
     if (!reaction) {
@@ -146,28 +163,35 @@ export const getReaction: RequestHandler<{
 };
 
 export const deleteReaction: RequestHandler<{
-    Params: { reactionId: string };
+    Params: { resourceType: IResourceType; resourceId: string };
 }> = async (request, reply) => {
     const {
         authUser,
-        params: { reactionId },
+        params: { resourceId, resourceType },
     } = request;
     const userId = authUser?.id as string;
-    const existingReaction = await DB_QUERIES.getReactionByIdForSource(reactionId, userId);
-    if (existingReaction) {
-        await DB_QUERIES.deleteReaction(userId, existingReaction.createdAt);
-        const activity = await DB_QUERIES.getActivityByResource(
-            existingReaction.resourceId,
-            existingReaction.resourceType
-        );
-        const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactions'>> = {
-            reactions: {
-                ...activity.reactions,
-                [existingReaction.reaction]: activity.reactions[existingReaction.reaction] - 1,
-            },
-        };
-        await DB_QUERIES.updateActivity(existingReaction.resourceId, existingReaction.resourceType, updatedActivity);
+
+    await getResourceBasedOnResourceType(resourceType, resourceId);
+
+    const existingReaction = await DB_QUERIES.getReactionsBySourceForResource(userId, resourceId, resourceType);
+
+    if (!existingReaction) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
+    await DB_QUERIES.deleteReaction(userId, existingReaction.createdAt);
+    const activity = await DB_QUERIES.getActivityByResource(existingReaction.resourceId, existingReaction.resourceType);
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
+    const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
+        reactionsCount: {
+            ...activity.reactionsCount,
+            [existingReaction.reaction]: activity.reactionsCount[existingReaction.reaction] - 1,
+        },
+    };
+    await DB_QUERIES.updateActivity(existingReaction.resourceId, existingReaction.resourceType, updatedActivity);
+
     const response: HttpResponse = {
         success: true,
     };

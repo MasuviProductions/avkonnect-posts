@@ -9,7 +9,7 @@ const initializeReactionsRoutes = (
 ) => {
     fastify.get('/reactions/:reactionId', { preHandler: [authHandler] }, getReaction);
     fastify.post('/reactions', { preHandler: [authHandler] }, createReaction);
-    fastify.delete('/reactions/:reactionId', { preHandler: [authHandler] }, deleteReaction);
+    fastify.delete('/reactions/:resourceType/:resourceId', { preHandler: [authHandler] }, deleteReaction);
 
     done?.();
 };
