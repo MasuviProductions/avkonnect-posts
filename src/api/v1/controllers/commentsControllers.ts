@@ -15,7 +15,7 @@ import {
     ICommentActivityResponse,
     ICommentApiModel,
 } from '../../../interfaces/app';
-import { IActivity } from '../../../models/activities';
+import { IActivity, ICommentCountType } from '../../../models/activities';
 import { IComment, ICommentContent } from '../../../models/comments';
 import { IReaction, IResourceType } from '../../../models/reactions';
 import { SourceType } from '../../../models/shared';
@@ -29,6 +29,34 @@ import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
 import { getSourceIdsFromSourceMarkups, getSourceMarkupsFromPostOrComment } from '../../../utils/generic';
 import SQS_QUEUE from '../../../utils/queue';
+
+const incrementCommentCountInActivity = async (
+    resourceId: string,
+    resourceType: IResourceType,
+    commentType: ICommentCountType,
+    incrementValue: number
+) => {
+    const activity = await DB_QUERIES.getActivityByResource(resourceId, resourceType);
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
+    const updatedActivityForResource: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
+        commentsCount: {
+            ...activity.commentsCount,
+            [commentType]: activity.commentsCount[commentType] + incrementValue,
+        },
+    };
+    const updatedActivityForComment = await DB_QUERIES.updateActivity(
+        activity.resourceId,
+        activity.resourceType,
+        updatedActivityForResource
+    );
+
+    if (!updatedActivityForComment) {
+        throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
+    }
+};
 
 export const createComment: RequestHandler<{
     Body: ICreateCommentRequest;
@@ -70,7 +98,7 @@ export const createComment: RequestHandler<{
             love: 0,
             laugh: 0,
         },
-        commentsCount: 0,
+        commentsCount: { comment: 0, subComment: 0 },
         reportInfo: { reportCount: 0, sources: [] },
     });
 
@@ -78,26 +106,10 @@ export const createComment: RequestHandler<{
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
     }
 
-    const incrementCommentCountInActivity = async (resourceId: string, resourceType: IResourceType) => {
-        const activity = await DB_QUERIES.getActivityByResource(resourceId, resourceType);
-        if (!activity) {
-            throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
-        }
-
-        const updatedActivityForResource: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
-            commentsCount: activity.commentsCount + 1,
-        };
-        await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivityForResource);
-
-        if (!createdActivityForComment) {
-            throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
-        }
-    };
-
-    await incrementCommentCountInActivity(body.resourceId, body.resourceType);
+    await incrementCommentCountInActivity(body.resourceId, body.resourceType, 'comment', 1);
     if (isResouceAComment(resource)) {
         // Update comment count for parent post
-        await incrementCommentCountInActivity(resource.resourceId, resource.resourceType);
+        await incrementCommentCountInActivity(resource.resourceId, resource.resourceType, 'subComment', 1);
     }
 
     // NOTE: This comment is added to connections'/followers' feeds
@@ -257,32 +269,20 @@ export const deleteComment: RequestHandler<{
     if (!comment) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
+
+    const resource = await getResourceBasedOnResourceType(comment.resourceType, comment.resourceId);
+
     if (authUser?.id != comment.sourceId) {
-        if (comment.resourceType === 'comment') {
-            const parentComment = await DB_QUERIES.getCommentById(comment.resourceId);
-            if (authUser?.id !== parentComment?.sourceId) {
-                throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
-            }
-        } else if (comment.resourceType === 'post') {
-            const parentPost = await DB_QUERIES.getPostById(comment.resourceId);
-            if (authUser?.id !== parentPost?.sourceId) {
-                throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
-            }
-        } else {
+        if (authUser?.id !== resource?.sourceId) {
             throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
         }
-    }
-    await DB_QUERIES.deleteComment(comment.sourceId, comment.createdAt);
+    } else await DB_QUERIES.deleteComment(comment.sourceId, comment.createdAt);
 
-    const activity = await DB_QUERIES.getActivityByResource(comment.resourceId, comment.resourceType);
-    if (!activity) {
-        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    await incrementCommentCountInActivity(comment.resourceId, comment.resourceType, 'comment', -1);
+    if (isResouceAComment(resource)) {
+        // Update comment count for parent post
+        await incrementCommentCountInActivity(resource.resourceId, resource.resourceType, 'subComment', -1);
     }
-    const updatedActivityForResource: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
-        commentsCount: activity.commentsCount - 1,
-    };
-    await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivityForResource);
-
     // TODO: Handle deletion of reacts and comments of comment
     const response: HttpResponse = {
         success: true,

@@ -173,7 +173,7 @@ export const createPost: RequestHandler<{
             love: 0,
             laugh: 0,
         },
-        commentsCount: 0,
+        commentsCount: { comment: 0, subComment: 0 },
         reportInfo: { reportCount: 0, sources: [] },
     });
     if (!createdActivity) {
