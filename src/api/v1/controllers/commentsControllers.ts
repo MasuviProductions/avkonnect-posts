@@ -276,13 +276,26 @@ export const deleteComment: RequestHandler<{
         if (authUser?.id !== resource?.sourceId) {
             throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
         }
-    } else await DB_QUERIES.deleteComment(comment.sourceId, comment.createdAt);
+    } else {
+        await DB_QUERIES.deleteComment(comment.sourceId, comment.createdAt);
+    }
 
     await incrementCommentCountInActivity(comment.resourceId, comment.resourceType, 'comment', -1);
+
     if (isResouceAComment(resource)) {
-        // Update comment count for parent post
         await incrementCommentCountInActivity(resource.resourceId, resource.resourceType, 'subComment', -1);
+    } else {
+        const commentActivity = await DB_QUERIES.getActivityByResource(comment.id, 'comment');
+        if (commentActivity && commentActivity?.commentsCount.comment > 0) {
+            await incrementCommentCountInActivity(
+                resource.id,
+                'post',
+                'subComment',
+                -1 * commentActivity.commentsCount.comment
+            );
+        }
     }
+
     // TODO: Handle deletion of reacts and comments of comment
     const response: HttpResponse = {
         success: true,
