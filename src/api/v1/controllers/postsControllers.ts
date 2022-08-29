@@ -277,7 +277,7 @@ export const deletePost: RequestHandler<{
         authUser,
     } = request;
     const post = await DB_QUERIES.getPostById(postId);
-    if (!post) {
+    if (!post || post.isDeleted) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
     if (authUser?.id != post.sourceId) {

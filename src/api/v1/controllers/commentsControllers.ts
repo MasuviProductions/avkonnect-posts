@@ -266,7 +266,7 @@ export const deleteComment: RequestHandler<{
         authUser,
     } = request;
     const comment = await DB_QUERIES.getCommentById(commentId);
-    if (!comment) {
+    if (!comment || comment.isDeleted) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
 
