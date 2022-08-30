@@ -244,7 +244,7 @@ export const createPost: RequestHandler<{
             love: 0,
             laugh: 0,
         },
-        commentsCount: 0,
+        commentsCount: { comment: 0, subComment: 0 },
         reportInfo: { reportCount: 0, sources: [] },
     });
     if (!createdActivity) {
@@ -348,7 +348,7 @@ export const deletePost: RequestHandler<{
         authUser,
     } = request;
     const post = await DB_QUERIES.getPostById(postId);
-    if (!post) {
+    if (!post || post.isDeleted) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
     if (authUser?.id != post.sourceId) {

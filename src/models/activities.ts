@@ -43,12 +43,18 @@ const ReactionsCountAttrSchema = new dynamoose.Schema({
     sad: { type: Number },
 });
 
+const CommentsCountAttrSchema = new dynamoose.Schema({
+    comment: { type: Number },
+    subComment: { type: Number },
+});
+
+export type ICommentCountType = 'comment' | 'subComment';
 export interface IActivity {
     id: string;
     resourceId: string;
     resourceType: IResourceType;
     reactionsCount: Record<IReactionType, number>;
-    commentsCount: number;
+    commentsCount: Record<ICommentCountType, number>;
     reportInfo: IReportInfo;
     banInfo?: IBanInfo;
 }
@@ -58,7 +64,7 @@ const ActivitiesSchema = new dynamoose.Schema(
         resourceId: { type: String, hashKey: true }, // partition key
         resourceType: { type: String, rangeKey: true },
         reactionsCount: { type: Object, schema: ReactionsCountAttrSchema },
-        commentsCount: { type: Number },
+        commentsCount: { type: Object, schema: CommentsCountAttrSchema },
         reportInfo: { type: Object, schema: ReportInfoSchema },
         banInfo: { type: Object, schema: BanSchema },
     },
