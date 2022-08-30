@@ -9,6 +9,7 @@ import {
     getCommentActivity,
     postBanComment,
     postReportComment,
+    getCommentReactions,
 } from '../controllers/commentsControllers';
 
 const initializeCommentsRoutes = (
@@ -23,6 +24,7 @@ const initializeCommentsRoutes = (
     fastify.patch('/comments/:commentId', { preHandler: [authHandler] }, updateComment);
     fastify.get('/comments/:commentId/comments', { preHandler: [authHandler] }, getCommentComments);
     fastify.post('/comments/:commentId/ban', { preHandler: [authHandler] }, postBanComment);
+    fastify.get('/comments/:commentId/reactions', { preHandler: [authHandler] }, getCommentReactions);
     fastify.post('/comments/:commentId/report', { preHandler: [authHandler] }, postReportComment);
 
     done?.();

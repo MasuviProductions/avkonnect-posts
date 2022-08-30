@@ -14,10 +14,11 @@ import {
     ICommentCommentsResponse,
     ICommentActivityResponse,
     ICommentApiModel,
+    ICommentReactionResponse,
 } from '../../../interfaces/app';
 import { IActivity } from '../../../models/activities';
 import { IComment, ICommentContent } from '../../../models/comments';
-import { IResourceType } from '../../../models/reactions';
+import { IReaction, IReactionType, IResourceType } from '../../../models/reactions';
 import { SourceType } from '../../../models/shared';
 import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
 import {
@@ -363,6 +364,42 @@ export const getCommentActivity: RequestHandler<{
     const response: HttpResponse<ICommentActivityResponse> = {
         success: true,
         data: commentActivity,
+    };
+    reply.status(200).send(response);
+};
+
+export const getCommentReactions: RequestHandler<{
+    Params: { commentId: string };
+    Querystring: { reaction: IReactionType; limit: number; nextSearchStartFromKey: string };
+}> = async (request, reply) => {
+    const {
+        params: { commentId },
+        query: { reaction, limit, nextSearchStartFromKey },
+    } = request;
+    const paginatedDocuments = await DB_QUERIES.getReactionsForResource(
+        'comment',
+        commentId,
+        reaction,
+        limit,
+        nextSearchStartFromKey ? (JSON.parse(decodeURI(nextSearchStartFromKey)) as ObjectType) : undefined
+    );
+    const reactions = paginatedDocuments.documents as IReaction[];
+    const relatedUserIds = new Set<string>();
+    paginatedDocuments.documents?.forEach((reaction) => {
+        relatedUserIds.add(reaction.sourceId as string);
+    });
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(
+        ENV.AUTH_SERVICE_KEY,
+        Array.from(relatedUserIds)
+    );
+    const postReactions: ICommentReactionResponse = {
+        reactions: reactions,
+        relatedSources: [...(relatedUsersRes.data || [])],
+    };
+    const response: HttpResponse<ICommentReactionResponse> = {
+        success: true,
+        data: postReactions,
+        dDBPagination: paginatedDocuments.dDBPagination,
     };
     reply.status(200).send(response);
 };
