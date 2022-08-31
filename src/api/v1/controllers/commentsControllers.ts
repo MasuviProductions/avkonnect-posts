@@ -79,6 +79,7 @@ export const createComment: RequestHandler<{
         resourceId: body.resourceId,
         resourceType: body.resourceType,
         contents: [{ ...body.comment, createdAt: new Date(currentTime) }],
+        hashtags: [],
         isBanned: false,
         isDeleted: false,
     };
