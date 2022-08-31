@@ -8,11 +8,13 @@ export interface ICommentContent {
     text: string;
     createdAt: Date;
     mediaUrls: string[];
+    stringifiedRawContent: string;
 }
 const CommentContentSchema = new dynamoose.Schema({
     text: { type: String },
     createdAt: { type: Date },
     mediaUrls: { type: Array, schema: Array.of(String) },
+    stringifiedRawContent: { type: String },
 });
 
 export interface IComment {
