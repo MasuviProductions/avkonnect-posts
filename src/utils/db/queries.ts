@@ -127,8 +127,8 @@ const getCommentsByResourceIdsForSource = async (
     return paginatedDocuments;
 };
 
-const deleteComment = async (sourceId: string, createdAt: Date): Promise<void> => {
-    await updateComment(sourceId, createdAt, { isDeleted: true });
+const deleteComment = async (sourceId: string, createdAt: Date): Promise<IComment | undefined> => {
+    return await updateComment(sourceId, createdAt, { isDeleted: true });
 };
 
 const createReaction = async (reaction: IReaction): Promise<IReaction | undefined> => {

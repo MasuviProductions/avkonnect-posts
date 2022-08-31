@@ -288,8 +288,9 @@ export const deletePost: RequestHandler<{
         throw new HttpError(ErrorMessage.InternalServerError, 500, ErrorCode.InternalServerError);
     }
     // TODO: Handle deletion of reacts and comments of post
-    const response: HttpResponse = {
+    const response: HttpResponse<IPost> = {
         success: true,
+        data: deletedPost,
     };
     reply.status(200).send(response);
 };

@@ -277,9 +277,9 @@ export const deleteComment: RequestHandler<{
         if (authUser?.id !== resource?.sourceId) {
             throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
         }
-    } else {
-        await DB_QUERIES.deleteComment(comment.sourceId, comment.createdAt);
     }
+
+    const deletedComment = await DB_QUERIES.deleteComment(comment.sourceId, comment.createdAt);
 
     await incrementCommentCountInActivity(comment.resourceId, comment.resourceType, 'comment', -1);
 
@@ -298,8 +298,9 @@ export const deleteComment: RequestHandler<{
     }
 
     // TODO: Handle deletion of reacts and comments of comment
-    const response: HttpResponse = {
+    const response: HttpResponse<IComment> = {
         success: true,
+        data: deletedComment,
     };
     reply.status(200).send(response);
 };
