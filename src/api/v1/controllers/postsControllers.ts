@@ -40,17 +40,16 @@ export const getUsersPosts: RequestHandler<{
     } = request;
     const page = Number(request.query.page);
     const limit = Number(request.query.limit);
-    const { posts, pagination } = await DB_QUERIES.getPostsByUserId(userId, page, limit);
-    // posts--> array-->activitypost
-    const postsId = new Set<string>();
-    posts.forEach((post) => postsId.add(post.id as string));
-    const postsActivities = await DB_QUERIES.getActivitiesByResourceIds(postsId, 'post');
+    const { posting, pagination } = await DB_QUERIES.getPostsByUserId(userId, page, limit);
+    const postsIds = new Set<string>();
+    posting.forEach((post) => postsIds.add(post.id as string));
+    const postsActivities = await DB_QUERIES.getActivitiesByResourceIds(postsIds, 'post');
     const postIdToActivitiesMap = transformActivitiesListToResourceIdToActivityMap(postsActivities);
 
     let sourceReactions: Record<string, IReaction> | undefined;
     let sourceComments: Record<string, Array<ICommentContent>> | undefined;
 
-    const sourceActivities = await getSourceActivityForResources(userId, postsId, 'post');
+    const sourceActivities = await getSourceActivityForResources(userId, postsIds, 'post');
     // eslint-disable-next-line prefer-const
     sourceReactions = sourceActivities.sourceReactions;
     // eslint-disable-next-line prefer-const
@@ -58,7 +57,7 @@ export const getUsersPosts: RequestHandler<{
 
     const relatedUserIds: Array<string> = [];
     const postsInfo: Array<IPostsInfo> = [];
-    posts.forEach((eachPost) => {
+    posting.forEach((eachPost) => {
         const post = eachPost as IPost;
         const activity = postIdToActivitiesMap[post.id];
         const postInfo: IPostsInfo = {

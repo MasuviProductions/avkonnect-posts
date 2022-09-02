@@ -64,8 +64,6 @@ PostsSchema.set('toObject', {
     },
 });
 
-export const READABLE_USER_PROPERTIES = ['id', 'sourceId'] as const;
-
 PostsSchema.plugin(mongooseLeanVirtuals);
 
 const Post = mongoose.model<IPost>(TABLE.POSTS, PostsSchema);

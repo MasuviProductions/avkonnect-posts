@@ -35,8 +35,8 @@ const getPostsByUserId = async (userId: string, page: number, limit: number) => 
         page,
         limit
     );
-    // console.log('posts info: ', posts[1].id);
-    return { posts, pagination };
+    const posting = posts.filter((post) => post.isDeleted != true);
+    return { posting, pagination };
 };
 
 const updatePost = async (postId: string, updatedPost: Partial<IPost>): Promise<IPost | undefined> => {
