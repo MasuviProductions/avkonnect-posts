@@ -8,11 +8,13 @@ export interface ICommentContent {
     text: string;
     createdAt: Date;
     mediaUrls: string[];
+    stringifiedRawContent: string;
 }
 const CommentContentSchema = new dynamoose.Schema({
     text: { type: String },
     createdAt: { type: Date },
     mediaUrls: { type: Array, schema: Array.of(String) },
+    stringifiedRawContent: { type: String },
 });
 
 export interface IComment {
@@ -23,6 +25,7 @@ export interface IComment {
     resourceType: IResourceType;
     createdAt: Date;
     contents: ICommentContent[]; // project to gsi
+    hashtags: string[];
     isDeleted: boolean;
     isBanned: boolean;
 }
@@ -37,6 +40,7 @@ const CommentsSchema = new dynamoose.Schema({
     resourceType: { type: String }, // sort key- gsi
     createdAt: { type: Date, rangeKey: true }, // sort key
     contents: { type: Array, schema: Array.of(CommentContentSchema) },
+    hashtags: { type: Array, schema: Array.of(String) },
     isDeleted: { type: Boolean, default: false },
     isBanned: { type: Boolean, default: false },
 });

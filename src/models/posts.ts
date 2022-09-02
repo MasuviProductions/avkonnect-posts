@@ -7,12 +7,14 @@ export interface IPostsContent {
     text: string;
     createdAt: Date;
     mediaUrls: string[];
+    stringifiedRawContent: string;
 }
 const PostContentSchema = new Schema<IPostsContent>(
     {
         text: { type: String },
         createdAt: { type: Date },
         mediaUrls: { type: Array.of(String) },
+        stringifiedRawContent: { type: String },
     },
     { id: false }
 );
