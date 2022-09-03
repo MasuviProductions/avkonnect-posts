@@ -14,7 +14,11 @@ const createPost = async (post: Partial<IPost>): Promise<IPost | undefined> => {
 };
 
 const getPostsByUserId = async (userId: string, page: number, limit: number) => {
-    const postsQuery = Post.find({ sourceId: userId });
+    const postsQuery = Post.find({
+        sourceId: userId,
+        isDeleted: { $eq: false },
+        isBanned: { $eq: false },
+    });
     const { documents: posts, pagination } = await DB_HELPERS.fetchMongoDBPaginatedDocuments<IPost>(
         postsQuery,
         [
@@ -35,8 +39,7 @@ const getPostsByUserId = async (userId: string, page: number, limit: number) => 
         page,
         limit
     );
-    const posting = posts.filter((post) => post.isDeleted != true);
-    return { posting, pagination };
+    return { posts, pagination };
 };
 
 const updatePost = async (postId: string, updatedPost: Partial<IPost>): Promise<IPost | undefined> => {
@@ -82,6 +85,9 @@ const getCommentById = async (commentId: string): Promise<IComment | undefined> 
         .and()
         .where('isDeleted')
         .eq(false)
+        .and()
+        .where('isBanned')
+        .eq(false)
         .using('commentIdIndex')
         .exec();
     return comment?.[0];
@@ -109,6 +115,9 @@ const getCommentsForResource = async (
         .eq(resourceType)
         .and()
         .where('isDeleted')
+        .eq(false)
+        .and()
+        .where('isBanned')
         .eq(false)
         .using('resourceIndex');
     const paginatedDocuments = await DB_HELPERS.fetchDynamoDBPaginatedDocuments<IComment>(
@@ -147,6 +156,8 @@ const getCommentsByResourceIdsForSource = async (
         .eq(resourceType)
         .and()
         .where('isDeleted')
+        .eq(false)
+        .where('isBanned')
         .eq(false);
 
     const paginatedDocuments = await DB_HELPERS.fetchDynamoDBPaginatedDocuments<IComment>(

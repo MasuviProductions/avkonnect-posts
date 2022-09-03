@@ -40,9 +40,9 @@ export const getUsersPosts: RequestHandler<{
     } = request;
     const page = Number(request.query.page);
     const limit = Number(request.query.limit);
-    const { posting, pagination } = await DB_QUERIES.getPostsByUserId(userId, page, limit);
+    const { posts, pagination } = await DB_QUERIES.getPostsByUserId(userId, page, limit);
     const postsIds = new Set<string>();
-    posting.forEach((post) => postsIds.add(post.id as string));
+    posts.forEach((post) => postsIds.add(post.id as string));
     const postsActivities = await DB_QUERIES.getActivitiesByResourceIds(postsIds, 'post');
     const postIdToActivitiesMap = transformActivitiesListToResourceIdToActivityMap(postsActivities);
 
@@ -57,7 +57,7 @@ export const getUsersPosts: RequestHandler<{
 
     const relatedUserIds: Array<string> = [];
     const postsInfo: Array<IPostsInfo> = [];
-    posting.forEach((eachPost) => {
+    posts.forEach((eachPost) => {
         const post = eachPost as IPost;
         const activity = postIdToActivitiesMap[post.id];
         const postInfo: IPostsInfo = {
