@@ -13,6 +13,35 @@ const createPost = async (post: Partial<IPost>): Promise<IPost | undefined> => {
     return createdPost.toObject();
 };
 
+const getPostsByUserId = async (userId: string, page: number, limit: number) => {
+    const postsQuery = Post.find({
+        sourceId: userId,
+        isDeleted: { $eq: false },
+        isBanned: { $eq: false },
+    });
+    const { documents: posts, pagination } = await DB_HELPERS.fetchMongoDBPaginatedDocuments<IPost>(
+        postsQuery,
+        [
+            'sourceId',
+            '_id',
+            'createdAt',
+            'updatedAt',
+            'sourceType',
+            'contents',
+            'visibleOnlyToConnections',
+            'commentsOnlyByConnections',
+            'activity',
+            'sourceActivity',
+            'hashtags',
+            'isBanned',
+            'isDeleted',
+        ],
+        page,
+        limit
+    );
+    return { posts, pagination };
+};
+
 const updatePost = async (postId: string, updatedPost: Partial<IPost>): Promise<IPost | undefined> => {
     const createdPost = await Post.findByIdAndUpdate(postId, updatedPost, { new: true });
     return createdPost?.toObject();
@@ -56,6 +85,9 @@ const getCommentById = async (commentId: string): Promise<IComment | undefined> 
         .and()
         .where('isDeleted')
         .eq(false)
+        .and()
+        .where('isBanned')
+        .eq(false)
         .using('commentIdIndex')
         .exec();
     return comment?.[0];
@@ -83,6 +115,9 @@ const getCommentsForResource = async (
         .eq(resourceType)
         .and()
         .where('isDeleted')
+        .eq(false)
+        .and()
+        .where('isBanned')
         .eq(false)
         .using('resourceIndex');
     const paginatedDocuments = await DB_HELPERS.fetchDynamoDBPaginatedDocuments<IComment>(
@@ -121,6 +156,9 @@ const getCommentsByResourceIdsForSource = async (
         .eq(resourceType)
         .and()
         .where('isDeleted')
+        .eq(false)
+        .and()
+        .where('isBanned')
         .eq(false);
 
     const paginatedDocuments = await DB_HELPERS.fetchDynamoDBPaginatedDocuments<IComment>(
@@ -303,6 +341,7 @@ const DB_QUERIES = {
     getReactionByIdForSource,
     getReaction,
     deleteReaction,
+    getPostsByUserId,
     getReactionsForResource,
     createActivity,
     getActivityByResource,

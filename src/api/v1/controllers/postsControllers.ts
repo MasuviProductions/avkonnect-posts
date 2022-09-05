@@ -31,46 +31,71 @@ import { getSourceIdsFromSourceMarkups, getSourceMarkupsFromPostOrComment } from
 import SQS_QUEUE from '../../../utils/queue';
 import { transformActivitiesListToResourceIdToActivityMap } from '../../../utils/transformers';
 
-export const getPost: RequestHandler<{
-    Params: { postId: string };
+export const getUsersPosts: RequestHandler<{
+    Params: { userId: string };
+    Querystring: { page: number; limit: number };
 }> = async (request, reply) => {
     const {
-        params: { postId },
-        authUser,
+        params: { userId },
     } = request;
-
-    const userId = authUser?.id;
-    const post = await DB_QUERIES.getPostById(postId);
-    if (!post) {
-        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
-    }
-
-    const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(post));
-    userIds.push(post.sourceId);
-    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
-
-    const activity = await DB_QUERIES.getActivityByResource(post.id, 'post');
-    if (!activity) {
-        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
-    }
-
-    let sourceComments: Record<string, ICommentContent[]> | undefined;
+    const page = Number(request.query.page);
+    const limit = Number(request.query.limit);
+    const { posts, pagination } = await DB_QUERIES.getPostsByUserId(userId, page, limit);
+    const postsIds = new Set<string>();
+    posts.forEach((post) => postsIds.add(post.id as string));
+    const postsActivities = await DB_QUERIES.getActivitiesByResourceIds(postsIds, 'post');
+    const postIdToActivitiesMap = transformActivitiesListToResourceIdToActivityMap(postsActivities);
     let sourceReactions: Record<string, IReaction> | undefined;
+    let sourceComments: Record<string, Array<ICommentContent>> | undefined;
+
     if (userId) {
-        const sourceActivities = await getSourceActivityForResources(userId as string, new Set([postId]), 'post');
-        sourceComments = sourceActivities.sourceComments;
+        const sourceActivities = await getSourceActivityForResources(userId, postsIds, 'post');
         sourceReactions = sourceActivities.sourceReactions;
+        sourceComments = sourceActivities.sourceComments;
     }
 
-    const postInfo: IPostResponse = {
-        ...post,
-        activity,
-        sourceActivity: { reaction: sourceReactions?.[post.id]?.reaction, comments: sourceComments?.[post.id] },
-        relatedSources: relatedUsersRes.data || [],
+    const relatedUserIds: Array<string> = [];
+    const postsInfo: Array<IPostsInfo> = [];
+    posts.forEach((eachPost) => {
+        const post = eachPost as IPost;
+        const activity = postIdToActivitiesMap[post.id];
+        const postInfo: IPostsInfo = {
+            postId: post.id,
+            createdAt: post.createdAt,
+            updatedAt: post.updatedAt,
+            sourceId: post.sourceId,
+            sourceType: SourceType.USER,
+            contents: post.contents,
+            visibleOnlyToConnections: post.visibleOnlyToConnections,
+            commentsOnlyByConnections: post.commentsOnlyByConnections,
+            activity: activity,
+            sourceActivity: {
+                reaction: sourceReactions?.[post.id]?.reaction,
+                comments: sourceComments?.[post.id],
+            },
+            hashtags: post.hashtags,
+            isBanned: false,
+            isDeleted: false,
+        };
+        relatedUserIds.push(post.sourceId);
+        const taggedUserIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(post));
+        taggedUserIds.forEach((userId) => {
+            relatedUserIds.push(userId);
+        });
+        postsInfo.push(postInfo);
+    });
+
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, relatedUserIds);
+
+    const postsInfoData: IPostsInfoResponse = {
+        postsInfo: postsInfo,
+        relatedSources: [...(relatedUsersRes.data || [])],
     };
-    const response: HttpResponse<IPostResponse> = {
+
+    const response: HttpResponse<IPostsInfoResponse> = {
         success: true,
-        data: postInfo,
+        data: postsInfoData,
+        pagination: pagination,
     };
     reply.status(200).send(response);
 };
@@ -137,6 +162,50 @@ export const getPostsInfo: RequestHandler<{
     const response: HttpResponse<IPostsInfoResponse> = {
         success: true,
         data: postsInfoData,
+    };
+    reply.status(200).send(response);
+};
+
+export const getPost: RequestHandler<{
+    Params: { postId: string };
+}> = async (request, reply) => {
+    const {
+        params: { postId },
+        authUser,
+    } = request;
+
+    const userId = authUser?.id;
+    const post = await DB_QUERIES.getPostById(postId);
+    if (!post) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
+    const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(post));
+    userIds.push(post.sourceId);
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
+
+    const activity = await DB_QUERIES.getActivityByResource(post.id, 'post');
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
+    let sourceComments: Record<string, ICommentContent[]> | undefined;
+    let sourceReactions: Record<string, IReaction> | undefined;
+    if (userId) {
+        const sourceActivities = await getSourceActivityForResources(userId as string, new Set([postId]), 'post');
+        sourceComments = sourceActivities.sourceComments;
+        sourceReactions = sourceActivities.sourceReactions;
+    }
+
+    const postInfo: IPostResponse = {
+        ...post,
+        activity,
+        sourceActivity: { reaction: sourceReactions?.[post.id]?.reaction, comments: sourceComments?.[post.id] },
+        relatedSources: relatedUsersRes.data || [],
+    };
+    const response: HttpResponse<IPostResponse> = {
+        success: true,
+        data: postInfo,
     };
     reply.status(200).send(response);
 };

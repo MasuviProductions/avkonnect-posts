@@ -101,6 +101,7 @@ export interface IPostApiModel extends IPost {
 export interface IPostResponse extends IPostApiModel {
     relatedSources: IRelatedSource[];
 }
+export type IPostsResponse = Array<IPost>;
 
 export interface IUpdatePostRequest {
     content?: Omit<IPostsContent, 'createdAt'>;

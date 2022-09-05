@@ -1,6 +1,7 @@
-import { Query, Scan } from 'dynamoose/dist/DocumentRetriever';
+import { Query as DynamooseQuery, Scan } from 'dynamoose/dist/DocumentRetriever';
 import { ObjectType } from 'dynamoose/dist/General';
-import { HttpDynamoDBResponsePagination, IDynamooseDocument } from '../../interfaces/app';
+import { Document, Query } from 'mongoose';
+import { HttpDynamoDBResponsePagination, IDynamooseDocument, HttpResponsePagination } from '../../interfaces/app';
 import { IComment } from '../../models/comments';
 import { IReaction } from '../../models/reactions';
 import DB_QUERIES from './queries';
@@ -8,7 +9,7 @@ import DB_QUERIES from './queries';
 const DYNAMODB_USER_SEARCH_SCAN_LIMIT = 20;
 
 const fetchDynamoDBPaginatedDocuments = async <T extends { id: string }>(
-    initialQuery: Scan<IDynamooseDocument<T>> | Query<IDynamooseDocument<T>>,
+    initialQuery: Scan<IDynamooseDocument<T>> | DynamooseQuery<IDynamooseDocument<T>>,
     attributes: Array<string>,
     requestLimit: number,
     dDBAssistStartFromKeyFields: Array<keyof T>,
@@ -58,6 +59,35 @@ const fetchDynamoDBPaginatedDocuments = async <T extends { id: string }>(
     return { documents, dDBPagination };
 };
 
+export const fetchMongoDBPaginatedDocuments = async <T>(
+    query: Query<(Document<unknown, unknown, T> & T)[], Document<unknown, unknown, T> & T, unknown, T>,
+    attributes: Array<string>,
+    page: number,
+    limit: number
+): Promise<{
+    documents: Partial<T>[];
+    pagination: HttpResponsePagination;
+}> => {
+    const selectAttribs: Record<string, number> = { _id: 0 };
+    attributes.forEach((attribute) => {
+        selectAttribs[attribute] = 1;
+    });
+
+    const totalCount = await query.clone().count();
+    const documents: Array<Partial<T>> = await query
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .select(selectAttribs);
+
+    const pagination: HttpResponsePagination = {
+        totalCount: totalCount,
+        count: documents.length,
+        page: page,
+        totalPages: Math.ceil(totalCount / limit),
+    };
+    return { documents, pagination };
+};
+
 export const getPrimaryPostComment = async (comment: IComment) => {
     let primaryComment: IComment | IReaction | undefined;
     if (comment.resourceType === 'post') {
@@ -72,6 +102,6 @@ export const getPrimaryPostComment = async (comment: IComment) => {
     return post;
 };
 
-const DB_HELPERS = { fetchDynamoDBPaginatedDocuments };
+const DB_HELPERS = { fetchDynamoDBPaginatedDocuments, fetchMongoDBPaginatedDocuments };
 
 export default DB_HELPERS;
