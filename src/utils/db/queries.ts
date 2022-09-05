@@ -27,11 +27,11 @@ const getPostById = async (postId: string): Promise<IPost | undefined> => {
 };
 
 const getPostsByIds = async (postsIdList: Set<string>): Promise<Array<IPost>> => {
-    const posts = await Post.find({
-        _id: {
-            $in: Array.from(postsIdList),
-        },
-    }).lean({ virtuals: true });
+    const posts = await Post.find()
+        .where('_id')
+        .in(Array.from(postsIdList))
+        .and([{ isDeleted: false }, { isBanned: false }])
+        .lean({ virtuals: true });
     return posts;
 };
 
@@ -51,7 +51,13 @@ const createComment = async (comment: IComment): Promise<IComment | undefined> =
 };
 
 const getCommentById = async (commentId: string): Promise<IComment | undefined> => {
-    const comment = await Comment.scan('id').eq(commentId).using('commentIdIndex').exec();
+    const comment = await Comment.scan('id')
+        .eq(commentId)
+        .and()
+        .where('isDeleted')
+        .eq(false)
+        .using('commentIdIndex')
+        .exec();
     return comment?.[0];
 };
 
@@ -75,6 +81,9 @@ const getCommentsForResource = async (
         .and()
         .where('resourceType')
         .eq(resourceType)
+        .and()
+        .where('isDeleted')
+        .eq(false)
         .using('resourceIndex');
     const paginatedDocuments = await DB_HELPERS.fetchDynamoDBPaginatedDocuments<IComment>(
         commentsQuery as Query<IDynamooseDocument<IComment>>,
@@ -109,7 +118,10 @@ const getCommentsByResourceIdsForSource = async (
         .in(Array.from(resourceIdsList))
         .and()
         .where('resourceType')
-        .eq(resourceType);
+        .eq(resourceType)
+        .and()
+        .where('isDeleted')
+        .eq(false);
 
     const paginatedDocuments = await DB_HELPERS.fetchDynamoDBPaginatedDocuments<IComment>(
         commentsQuery,
@@ -127,8 +139,8 @@ const getCommentsByResourceIdsForSource = async (
     return paginatedDocuments;
 };
 
-const deleteComment = async (sourceId: string, createdAt: Date): Promise<void> => {
-    await updateComment(sourceId, createdAt, { isDeleted: true });
+const deleteComment = async (sourceId: string, createdAt: Date): Promise<IComment | undefined> => {
+    return await updateComment(sourceId, createdAt, { isDeleted: true });
 };
 
 const createReaction = async (reaction: IReaction): Promise<IReaction | undefined> => {
