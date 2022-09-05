@@ -45,15 +45,14 @@ export const getUsersPosts: RequestHandler<{
     posts.forEach((post) => postsIds.add(post.id as string));
     const postsActivities = await DB_QUERIES.getActivitiesByResourceIds(postsIds, 'post');
     const postIdToActivitiesMap = transformActivitiesListToResourceIdToActivityMap(postsActivities);
-
     let sourceReactions: Record<string, IReaction> | undefined;
     let sourceComments: Record<string, Array<ICommentContent>> | undefined;
 
-    const sourceActivities = await getSourceActivityForResources(userId, postsIds, 'post');
-    // eslint-disable-next-line prefer-const
-    sourceReactions = sourceActivities.sourceReactions;
-    // eslint-disable-next-line prefer-const
-    sourceComments = sourceActivities.sourceComments;
+    if (userId) {
+        const sourceActivities = await getSourceActivityForResources(userId, postsIds, 'post');
+        sourceReactions = sourceActivities.sourceReactions;
+        sourceComments = sourceActivities.sourceComments;
+    }
 
     const relatedUserIds: Array<string> = [];
     const postsInfo: Array<IPostsInfo> = [];

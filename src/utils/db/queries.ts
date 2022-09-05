@@ -157,6 +157,7 @@ const getCommentsByResourceIdsForSource = async (
         .and()
         .where('isDeleted')
         .eq(false)
+        .and()
         .where('isBanned')
         .eq(false);
 
