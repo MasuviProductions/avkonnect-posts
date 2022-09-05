@@ -132,6 +132,11 @@ export interface IPostReactionsResponse {
     relatedSources: Array<IRelatedSource>;
 }
 
+export interface ICommentReactionResponse {
+    reactions: Array<IReaction>;
+    relatedSources: Array<IRelatedSource>;
+}
+
 export interface ICommentApiModel extends IComment {
     activity: IActivity;
     sourceActivity?: ISourceActivity;
