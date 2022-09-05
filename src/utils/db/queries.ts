@@ -27,13 +27,11 @@ const getPostById = async (postId: string): Promise<IPost | undefined> => {
 };
 
 const getPostsByIds = async (postsIdList: Set<string>): Promise<Array<IPost>> => {
-    const posts = await Post.find({
-        _id: {
-            $in: Array.from(postsIdList),
-        },
-        isDeleted: { $eq: false },
-        isBanned: { $eq: false },
-    }).lean({ virtuals: true });
+    const posts = await Post.find()
+        .where('_id')
+        .in(Array.from(postsIdList))
+        .and([{ isDeleted: false }, { isBanned: false }])
+        .lean({ virtuals: true });
     return posts;
 };
 
