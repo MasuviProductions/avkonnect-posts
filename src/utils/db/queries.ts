@@ -31,6 +31,8 @@ const getPostsByIds = async (postsIdList: Set<string>): Promise<Array<IPost>> =>
         _id: {
             $in: Array.from(postsIdList),
         },
+        isDeleted: { $eq: false },
+        isBanned: { $eq: false },
     }).lean({ virtuals: true });
     return posts;
 };
