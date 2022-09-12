@@ -110,6 +110,10 @@ export const createReaction: RequestHandler<{
                 existingReaction.createdAt,
                 body.reaction
             );
+
+            if (!reaction) {
+                throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
+            }
             const updatedActivity: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
                 reactionsCount: {
                     ...activity.reactionsCount,
@@ -120,6 +124,7 @@ export const createReaction: RequestHandler<{
             await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivity);
         }
     }
+
     if (!reaction) {
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
     }

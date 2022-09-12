@@ -37,7 +37,9 @@ export const getUsersPosts: RequestHandler<{
 }> = async (request, reply) => {
     const {
         params: { userId },
+        authUser,
     } = request;
+
     const page = Number(request.query.page);
     const limit = Number(request.query.limit);
     const { posts, pagination } = await DB_QUERIES.getPostsByUserId(userId, page, limit);
@@ -48,8 +50,8 @@ export const getUsersPosts: RequestHandler<{
     let sourceReactions: Record<string, IReaction> | undefined;
     let sourceComments: Record<string, Array<ICommentContent>> | undefined;
 
-    if (userId) {
-        const sourceActivities = await getSourceActivityForResources(userId, postsIds, 'post');
+    if (authUser?.id) {
+        const sourceActivities = await getSourceActivityForResources(authUser.id, postsIds, 'post');
         sourceReactions = sourceActivities.sourceReactions;
         sourceComments = sourceActivities.sourceComments;
     }
