@@ -8,8 +8,10 @@ import {
     updatePost,
     getPostComments,
     getPostsInfo,
+    getTrendingPosts,
     getUsersPosts,
     getPostActivity,
+    getTrendingPostsInfo,
     postBanPost,
     postReportPost,
 } from '../controllers/postsControllers';
@@ -30,6 +32,8 @@ const initializePostsRoutes = (
     fastify.get('/users/:userId/posts', { preHandler: [authHandler] }, getUsersPosts);
     fastify.post('/posts/:postId/ban', { preHandler: [authHandler] }, postBanPost);
     fastify.post('/posts/:postId/report', { preHandler: [authHandler] }, postReportPost);
+    fastify.post('/posts/:postId/trending', getTrendingPosts);
+    fastify.post('/posts/trending', getTrendingPostsInfo);
 
     done?.();
 };

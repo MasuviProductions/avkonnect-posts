@@ -227,6 +227,16 @@ const getReaction = async (reactionId: string): Promise<IReaction | undefined> =
     return reaction[0];
 };
 
+const getTrendingPostData = async (resourceId: string, resourceType: string): Promise<IActivity> => {
+    const activity = await Activity.scan('resourceId')
+        .eq(resourceId)
+        .and()
+        .where('resourceType')
+        .eq(resourceType)
+        .exec();
+    return activity[0];
+};
+
 const updateReactionTypeForReaction = async (
     sourceId: string,
     createdAt: Date,
@@ -330,6 +340,7 @@ const DB_QUERIES = {
     getCommentsForResource,
     getPostById,
     deletePostById,
+    getTrendingPostData,
     updatePost,
     createReaction,
     updateReactionTypeForReaction,
