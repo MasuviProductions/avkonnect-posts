@@ -65,7 +65,7 @@ export const createReaction: RequestHandler<{
             },
         };
         await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivity);
-        // NOTE: This reactions is added to connections'/followers' feeds
+        // NOTE: This reactions is added to connections followers' feeds
         const feedsReactionEvent: IFeedsSQSEventRecord = {
             eventType: 'generateFeeds',
             resourceId: reaction.id,

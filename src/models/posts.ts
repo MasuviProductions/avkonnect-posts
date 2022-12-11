@@ -52,6 +52,8 @@ const PostsSchema = new Schema(
     }
 );
 
+PostsSchema.index({ sourceId: 1, createdAt: -1 }, { name: 'sourceIdAndCreatedAtIndex', unique: false });
+
 PostsSchema.virtual('id').get(function (): string {
     return this._id;
 });
