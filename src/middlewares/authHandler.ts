@@ -13,11 +13,9 @@ import { HttpError } from '../utils/error';
 export const authHandler: preHandlerAsyncHookHandler = async (request) => {
     const authType = getAuthenticationTokenType(request.headers.authorization);
     const authToken = getTokenFromApiRequest(request.headers.authorization);
-
     if (!authToken) {
         throw new HttpError(ErrorMessage.AuthenticationError, 401, ErrorCode.AuthenticationError);
     }
-
     switch (authType) {
         case AuthenticationToken.Bearer: {
             try {

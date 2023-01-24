@@ -70,6 +70,8 @@ export const getUsersPosts: RequestHandler<{
             contents: post.contents,
             visibleOnlyToConnections: post.visibleOnlyToConnections,
             commentsOnlyByConnections: post.commentsOnlyByConnections,
+            postStatus: post.postStatus,
+            postMediaStatus: post.postMediaStatus,
             activity: activity,
             sourceActivity: {
                 reaction: sourceReactions?.[post.id]?.reaction,
@@ -137,6 +139,8 @@ export const getPostsInfo: RequestHandler<{
             visibleOnlyToConnections: post.visibleOnlyToConnections,
             commentsOnlyByConnections: post.commentsOnlyByConnections,
             activity: activity,
+            postStatus: post.postStatus,
+            postMediaStatus: post.postMediaStatus,
             sourceActivity: {
                 reaction: sourceReactions?.[post.id]?.reaction,
                 comments: sourceComments?.[post.id],
@@ -227,6 +231,8 @@ export const createPost: RequestHandler<{
         visibleOnlyToConnections: body.visibleOnlyToConnections,
         commentsOnlyByConnections: body.commentsOnlyByConnections,
         hashtags: body.hashtags,
+        postStatus: body.postStatus,
+        postMediaStatus: body.postMediaStatus,
     };
     const createdPost = await DB_QUERIES.createPost(post);
     if (!createdPost) {
@@ -306,6 +312,8 @@ export const updatePost: RequestHandler<{
         ...post,
         contents: postContents,
         hashtags: Array.from(new Set([...(post.hashtags || []), ...(body.hashtags || [])])),
+        postStatus: body.postStatus,
+        postMediaStatus: body.postMediaStatus,
     });
     if (!updatedPost) {
         throw new HttpError(ErrorMessage.BadRequest, 400, ErrorCode.BadRequest);
