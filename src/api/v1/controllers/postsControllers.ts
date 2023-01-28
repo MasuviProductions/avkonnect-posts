@@ -370,6 +370,7 @@ export const getTrendingPosts: RequestHandler<{
     Params: { postId: string };
 }> = async (request, reply) => {
     const postId = request.params.postId;
+    // console.log('here: __________________------>');
     const reactions = await DB_QUERIES.getTrendingPostData(postId, 'post');
     const response: HttpResponse = {
         success: true,
@@ -382,6 +383,7 @@ export const getTrendingPostsInfo: RequestHandler<{
     Body: IPostsInfoRequest;
 }> = async (request, reply) => {
     const { body } = request;
+    // console.log('came here: ', body);
     const postIds = new Set(body.postIds);
     const posts = await DB_QUERIES.getPostsByIds(postIds);
     const userId = posts[0].sourceId;
