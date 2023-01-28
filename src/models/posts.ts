@@ -3,7 +3,6 @@ import mongooseLeanVirtuals from 'mongoose-lean-virtuals';
 import { TABLE } from '../constants/db';
 import { ISourceType } from './shared';
 
-export type IOrientation = 'portrait' | 'landscape';
 export type IPostImageType = 'postImageOriginal' | 'postImageThumbnail' | 'postImageMax' | 'postImageStandard';
 export type IPostStatus = 'created' | 'draft';
 export type IPostMediaStatus = 'uploading' | 'uploaded' | 'processing' | 'failed' | 'success';
@@ -11,7 +10,6 @@ export type IPostMediaStatus = 'uploading' | 'uploaded' | 'processing' | 'failed
 export interface IPostMediaUrls {
     resolution: string;
     url: string;
-    orientation: IOrientation;
     type: IPostImageType;
 }
 
