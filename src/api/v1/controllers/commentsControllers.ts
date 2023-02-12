@@ -15,6 +15,7 @@ import {
     ICommentActivityResponse,
     ICommentApiModel,
     ICommentReactionResponse,
+    IRootPostInfoForComment,
 } from '../../../interfaces/app';
 import { IActivity, ICommentCountType } from '../../../models/activities';
 import { IComment, ICommentContent } from '../../../models/comments';
@@ -57,6 +58,36 @@ const incrementCommentCountInActivity = async (
     if (!updatedActivityForComment) {
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
     }
+};
+
+export const getRootPostInfoForComment: RequestHandler<{
+    Params: { commentId: string };
+}> = async (request, reply) => {
+    const { params } = request;
+    const commentId = params.commentId;
+    const comment = await DB_QUERIES.getCommentById(commentId);
+    if (!comment) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
+    let postId: string | undefined;
+    if (comment.resourceType === 'comment') {
+        const parentComment = await DB_QUERIES.getCommentById(comment.resourceId);
+        if (!parentComment) {
+            throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+        }
+        postId = parentComment.resourceId;
+    } else {
+        postId = comment.resourceId;
+    }
+
+    const response: HttpResponse<IRootPostInfoForComment> = {
+        success: true,
+        data: {
+            postId,
+        },
+    };
+    reply.status(200).send(response);
 };
 
 export const createComment: RequestHandler<{
