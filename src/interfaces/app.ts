@@ -164,3 +164,7 @@ export type ICommentActivityResponse = IActivity;
 export interface IReactionResponse extends IReaction {
     relatedSource: IRelatedSource;
 }
+
+export interface IRootPostInfoForComment {
+    postId: string;
+}
