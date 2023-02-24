@@ -380,6 +380,7 @@ export const getTrendingPosts: RequestHandler<{
 };
 
 export const getTrendingPostsInfo: RequestHandler<{
+    //delete
     Body: IPostsInfoRequest;
 }> = async (request, reply) => {
     const { body } = request;
