@@ -18,7 +18,7 @@ const getPostsByUserId = async (userId: string, page: number, limit: number) => 
         sourceId: userId,
         isDeleted: { $eq: false },
         isBanned: { $eq: false },
-    });
+    }).sort({ createdAt: -1 });
     const { documents: posts, pagination } = await DB_HELPERS.fetchMongoDBPaginatedDocuments<IPost>(
         postsQuery,
         [
