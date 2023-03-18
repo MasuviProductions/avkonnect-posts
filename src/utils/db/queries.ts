@@ -54,8 +54,8 @@ const getPostById = async (postId: string): Promise<IPost | undefined> => {
         _id: postId,
         isDeleted: false,
         isBanned: false,
-        postStatus: 'created',
-        postMediaStatus: 'success',
+        // postStatus: 'created',
+        // postMediaStatus: 'success',
     });
     if (!post) {
         return undefined;
