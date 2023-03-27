@@ -11,7 +11,7 @@ import {
 } from 'fastify';
 import { ReplyGenericInterface } from 'fastify/types/reply';
 import { IActivity } from '../models/activities';
-import { IComment, ICommentContent } from '../models/comments';
+import { IComment, ICommentContent, ICommentMediaStatus, ICommentStatus } from '../models/comments';
 import { IPost, IPostMediaStatus, IPostsContent, IPostStatus } from '../models/posts';
 import { IReaction, IReactionType, IResourceType } from '../models/reactions';
 import { ISourceType } from '../models/shared';
@@ -78,10 +78,14 @@ export interface ICreateCommentRequest {
     resourceId: string;
     resourceType: IResourceType;
     comment: Omit<ICommentContent, 'createdAt'>;
+    commentStatus: ICommentStatus;
+    commentMediaStatus: ICommentMediaStatus;
 }
 
 export interface IUpdateCommentRequest {
     comment: Omit<ICommentContent, 'createdAt'>;
+    commentMediaStatus: ICommentMediaStatus;
+    commentStatus: ICommentStatus;
 }
 
 export interface ICreatePostRequest {

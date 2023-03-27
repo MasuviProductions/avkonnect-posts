@@ -104,7 +104,9 @@ const getCommentById = async (commentId: string): Promise<IComment | undefined> 
 const updateComment = async (
     sourceId: string,
     createdAt: Date,
-    updatedComment: Partial<Pick<IComment, 'contents' | 'isDeleted' | 'isBanned'>>
+    updatedComment: Partial<
+        Pick<IComment, 'contents' | 'isDeleted' | 'isBanned' | 'commentMediaStatus' | 'commentStatus'>
+    >
 ): Promise<IComment | undefined> => {
     const comment = await Comment.update({ sourceId: sourceId, createdAt: createdAt.getTime() }, updatedComment);
     return comment;
