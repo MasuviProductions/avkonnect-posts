@@ -112,6 +112,8 @@ export const createComment: RequestHandler<{
         resourceType: body.resourceType,
         contents: [{ ...body.comment, createdAt: new Date(currentTime) }],
         hashtags: [],
+        commentStatus: body.commentStatus,
+        commentMediaStatus: body.commentMediaStatus,
         isBanned: false,
         isDeleted: false,
     };
@@ -259,6 +261,8 @@ export const updateComment: RequestHandler<{
     const newCommentContent: ICommentContent = { ...body.comment, createdAt: new Date(Date.now()) };
     const updatedComment = await DB_QUERIES.updateComment(comment.sourceId, comment.createdAt, {
         contents: [...comment.contents, newCommentContent],
+        commentMediaStatus: body.commentMediaStatus,
+        commentStatus: body.commentStatus,
     });
     if (!updatedComment) {
         throw new HttpError(ErrorMessage.BadRequest, 400, ErrorCode.BadRequest);

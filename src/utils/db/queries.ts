@@ -18,6 +18,8 @@ const getPostsByUserId = async (userId: string, page: number, limit: number) => 
         sourceId: userId,
         isDeleted: { $eq: false },
         isBanned: { $eq: false },
+        postMediaStatus: { $eq: 'success' },
+        postStatus: { $eq: 'created' },
     }).sort({ createdAt: -1 });
     const { documents: posts, pagination } = await DB_HELPERS.fetchMongoDBPaginatedDocuments<IPost>(
         postsQuery,
@@ -48,7 +50,13 @@ const updatePost = async (postId: string, updatedPost: Partial<IPost>): Promise<
 };
 
 const getPostById = async (postId: string): Promise<IPost | undefined> => {
-    const post = await Post.findById(postId).exec();
+    const post = await Post.findOne({
+        _id: postId,
+        isDeleted: false,
+        isBanned: false,
+        // postStatus: 'created',
+        // postMediaStatus: 'success',
+    });
     if (!post) {
         return undefined;
     }
@@ -59,7 +67,7 @@ const getPostsByIds = async (postsIdList: Set<string>): Promise<Array<IPost>> =>
     const posts = await Post.find()
         .where('_id')
         .in(Array.from(postsIdList))
-        .and([{ isDeleted: false }, { isBanned: false }])
+        .and([{ isDeleted: false }, { isBanned: false }, { postMediaStatus: 'success' }, { postStatus: 'created' }])
         .lean({ virtuals: true });
     return posts;
 };
@@ -96,7 +104,9 @@ const getCommentById = async (commentId: string): Promise<IComment | undefined> 
 const updateComment = async (
     sourceId: string,
     createdAt: Date,
-    updatedComment: Partial<Pick<IComment, 'contents' | 'isDeleted' | 'isBanned'>>
+    updatedComment: Partial<
+        Pick<IComment, 'contents' | 'isDeleted' | 'isBanned' | 'commentMediaStatus' | 'commentStatus'>
+    >
 ): Promise<IComment | undefined> => {
     const comment = await Comment.update({ sourceId: sourceId, createdAt: createdAt.getTime() }, updatedComment);
     return comment;

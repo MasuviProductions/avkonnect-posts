@@ -11,8 +11,8 @@ import {
 } from 'fastify';
 import { ReplyGenericInterface } from 'fastify/types/reply';
 import { IActivity } from '../models/activities';
-import { IComment, ICommentContent } from '../models/comments';
-import { IPost, IPostsContent } from '../models/posts';
+import { IComment, ICommentContent, ICommentMediaStatus, ICommentStatus } from '../models/comments';
+import { IPost, IPostMediaStatus, IPostsContent, IPostStatus } from '../models/posts';
 import { IReaction, IReactionType, IResourceType } from '../models/reactions';
 import { ISourceType } from '../models/shared';
 import { IUserApiModel } from './api';
@@ -78,15 +78,22 @@ export interface ICreateCommentRequest {
     resourceId: string;
     resourceType: IResourceType;
     comment: Omit<ICommentContent, 'createdAt'>;
+    commentStatus: ICommentStatus;
+    commentMediaStatus: ICommentMediaStatus;
 }
 
 export interface IUpdateCommentRequest {
     comment: Omit<ICommentContent, 'createdAt'>;
+    commentMediaStatus: ICommentMediaStatus;
+    commentStatus: ICommentStatus;
 }
 
 export interface ICreatePostRequest {
+    pending: IPostStatus | undefined;
     content: Omit<IPostsContent, 'createdAt'>;
     hashtags: string[];
+    postStatus: IPostStatus;
+    postMediaStatus: IPostMediaStatus;
     visibleOnlyToConnections: boolean;
     commentsOnlyByConnections: boolean;
 }
@@ -106,6 +113,8 @@ export type IPostsResponse = Array<IPost>;
 export interface IUpdatePostRequest {
     content?: Omit<IPostsContent, 'createdAt'>;
     hashtags?: Array<string>;
+    postStatus: IPostStatus;
+    postMediaStatus: IPostMediaStatus;
 }
 
 export interface ISourceActivity {
