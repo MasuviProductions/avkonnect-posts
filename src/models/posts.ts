@@ -3,16 +3,34 @@ import mongooseLeanVirtuals from 'mongoose-lean-virtuals';
 import { TABLE } from '../constants/db';
 import { ISourceType } from './shared';
 
+export type IPostImageType = 'postImageOriginal' | 'postImageThumbnail' | 'postImageMax' | 'postImageStandard';
+export type IPostStatus = 'created' | 'draft';
+export type IPostMediaStatus = 'uploading' | 'uploaded' | 'processing' | 'failed' | 'success';
+
+export interface IPostMediaUrl {
+    resolution: string;
+    url: string;
+    type: IPostImageType;
+}
+const PostMediaUrl = new Schema<IPostMediaUrl>({
+    resolution: { type: String },
+    url: { type: String },
+    type: { type: String },
+});
+
 export interface IPostsContent {
     text: string;
     createdAt: Date;
-    mediaUrls: string[];
+    mediaUrls: Array<Array<IPostMediaUrl>>;
+    stringifiedRawContent: string;
 }
+
 const PostContentSchema = new Schema<IPostsContent>(
     {
         text: { type: String },
         createdAt: { type: Date },
-        mediaUrls: { type: Array.of(String) },
+        mediaUrls: { type: Array.of(Array.of(PostMediaUrl)) },
+        stringifiedRawContent: { type: String },
     },
     { id: false }
 );
@@ -27,6 +45,8 @@ export interface IPost {
     hashtags: Array<string>;
     visibleOnlyToConnections: boolean;
     commentsOnlyByConnections: boolean;
+    postStatus: IPostStatus;
+    postMediaStatus: IPostMediaStatus;
     isDeleted: boolean;
     isBanned: boolean;
 }
@@ -41,6 +61,8 @@ const PostsSchema = new Schema(
         hashtags: { type: Array.of(String) },
         visibleOnlyToConnections: { type: Boolean, required: true },
         commentsOnlyByConnections: { type: Boolean, required: true },
+        postStatus: { type: String, required: true },
+        postMediaStatus: { type: String, required: true },
         isDeleted: { type: Boolean, default: false },
         isBanned: { type: Boolean, default: false },
     },
@@ -49,6 +71,8 @@ const PostsSchema = new Schema(
         versionKey: false,
     }
 );
+
+PostsSchema.index({ sourceId: 1, createdAt: -1 }, { name: 'sourceIdAndCreatedAtIndex', unique: false });
 
 PostsSchema.virtual('id').get(function (): string {
     return this._id;

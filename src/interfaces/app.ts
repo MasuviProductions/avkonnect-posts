@@ -11,8 +11,8 @@ import {
 } from 'fastify';
 import { ReplyGenericInterface } from 'fastify/types/reply';
 import { IActivity } from '../models/activities';
-import { IComment, ICommentContent } from '../models/comments';
-import { IPost, IPostsContent } from '../models/posts';
+import { IComment, ICommentContent, ICommentMediaStatus, ICommentStatus } from '../models/comments';
+import { IPost, IPostMediaStatus, IPostsContent, IPostStatus } from '../models/posts';
 import { IReaction, IReactionType, IResourceType } from '../models/reactions';
 import { ISourceType } from '../models/shared';
 import { IUserApiModel } from './api';
@@ -78,40 +78,52 @@ export interface ICreateCommentRequest {
     resourceId: string;
     resourceType: IResourceType;
     comment: Omit<ICommentContent, 'createdAt'>;
+    commentStatus: ICommentStatus;
+    commentMediaStatus: ICommentMediaStatus;
 }
 
 export interface IUpdateCommentRequest {
     comment: Omit<ICommentContent, 'createdAt'>;
+    commentMediaStatus: ICommentMediaStatus;
+    commentStatus: ICommentStatus;
 }
 
 export interface ICreatePostRequest {
+    pending: IPostStatus | undefined;
     content: Omit<IPostsContent, 'createdAt'>;
     hashtags: string[];
+    postStatus: IPostStatus;
+    postMediaStatus: IPostMediaStatus;
     visibleOnlyToConnections: boolean;
     commentsOnlyByConnections: boolean;
 }
 
 export type IRelatedSource = Partial<IUserApiModel>;
 
-export interface IPostResponse extends IPost {
+export interface IPostApiModel extends IPost {
+    activity: IActivity;
+    sourceActivity?: ISourceActivity;
+}
+
+export interface IPostResponse extends IPostApiModel {
     relatedSources: IRelatedSource[];
 }
+export type IPostsResponse = Array<IPost>;
 
 export interface IUpdatePostRequest {
     content?: Omit<IPostsContent, 'createdAt'>;
     hashtags?: Array<string>;
+    postStatus: IPostStatus;
+    postMediaStatus: IPostMediaStatus;
 }
 
-export interface IPostInfoSourceActivity {
-    sourceComments?: ICommentContent[];
-    sourceReaction?: IReactionType;
+export interface ISourceActivity {
+    comments?: ICommentContent[];
+    reaction?: IReactionType;
 }
 
-export interface IPostsInfo extends Omit<IPost, 'id'> {
+export interface IPostsInfo extends Omit<IPostApiModel, 'id'> {
     postId: string;
-    reactionsCount: Record<IReactionType, number>;
-    commentsCount: number;
-    sourceActivity?: IPostInfoSourceActivity;
 }
 
 export interface IPostsInfoRequest {
@@ -130,19 +142,29 @@ export interface IPostReactionsResponse {
     relatedSources: Array<IRelatedSource>;
 }
 
+export interface ICommentReactionResponse {
+    reactions: Array<IReaction>;
+    relatedSources: Array<IRelatedSource>;
+}
+
+export interface ICommentApiModel extends IComment {
+    activity: IActivity;
+    sourceActivity?: ISourceActivity;
+}
+
 export interface IPostCommentsResponse {
-    comments: Array<IComment>;
+    comments: Array<ICommentApiModel>;
     relatedSources: Array<IRelatedSource>;
 }
 
 export type IPostActivityResponse = IActivity;
 
-export interface ICommentResponse extends IComment {
+export interface ICommentResponse extends ICommentApiModel {
     relatedSources: IRelatedSource[];
 }
 
 export interface ICommentCommentsResponse {
-    comments: Array<IComment>;
+    comments: Array<ICommentApiModel>;
     relatedSources: Array<IRelatedSource>;
 }
 
@@ -150,4 +172,8 @@ export type ICommentActivityResponse = IActivity;
 
 export interface IReactionResponse extends IReaction {
     relatedSource: IRelatedSource;
+}
+
+export interface IRootPostInfoForComment {
+    postId: string;
 }

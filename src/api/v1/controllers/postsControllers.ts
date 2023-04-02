@@ -7,7 +7,6 @@ import {
     HttpResponse,
     ICreatePostRequest,
     IFeedsSQSEventRecord,
-    IPostInfoSourceActivity,
     IPostReactionsResponse,
     IPostCommentsResponse,
     IPostsInfo,
@@ -17,6 +16,7 @@ import {
     RequestHandler,
     IPostResponse,
     IPostActivityResponse,
+    ICommentApiModel,
 } from '../../../interfaces/app';
 import { IActivity } from '../../../models/activities';
 import { IComment, ICommentContent } from '../../../models/comments';
@@ -24,32 +24,82 @@ import { IPost, IPostsContent } from '../../../models/posts';
 import { IReaction, IReactionType } from '../../../models/reactions';
 import { SourceType } from '../../../models/shared';
 import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
+import { getSourceActivityForResources } from '../../../utils/db/generic';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
 import { getSourceIdsFromSourceMarkups, getSourceMarkupsFromPostOrComment } from '../../../utils/generic';
 import SQS_QUEUE from '../../../utils/queue';
-import {
-    transformActivitiesListToResourceIdToActivityMap,
-    transformCommentsListToResourceIdToCommentMap,
-    transformReactionsListToResourceIdToReactionMap,
-} from '../../../utils/transformers';
+import { transformActivitiesListToResourceIdToActivityMap } from '../../../utils/transformers';
 
-export const getPost: RequestHandler<{
-    Params: { userId: string; postId: string };
+export const getUsersPosts: RequestHandler<{
+    Params: { userId: string };
+    Querystring: { page: number; limit: number };
 }> = async (request, reply) => {
     const {
-        params: { postId },
+        params: { userId },
+        authUser,
     } = request;
-    const post = await DB_QUERIES.getPostById(postId);
-    if (!post) {
-        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+
+    const page = Number(request.query.page);
+    const limit = Number(request.query.limit);
+    const { posts, pagination } = await DB_QUERIES.getPostsByUserId(userId, page, limit);
+    const postsIds = new Set<string>();
+    posts.forEach((post) => postsIds.add(post.id as string));
+    const postsActivities = await DB_QUERIES.getActivitiesByResourceIds(postsIds, 'post');
+    const postIdToActivitiesMap = transformActivitiesListToResourceIdToActivityMap(postsActivities);
+    let sourceReactions: Record<string, IReaction> | undefined;
+    let sourceComments: Record<string, Array<ICommentContent>> | undefined;
+
+    if (authUser?.id) {
+        const sourceActivities = await getSourceActivityForResources(authUser.id, postsIds, 'post');
+        sourceReactions = sourceActivities.sourceReactions;
+        sourceComments = sourceActivities.sourceComments;
     }
-    const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(post));
-    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
-    const postInfo: IPostResponse = { ...post, relatedSources: relatedUsersRes.data || [] };
-    const response: HttpResponse<IPostResponse> = {
+
+    const relatedUserIds: Array<string> = [];
+    const postsInfo: Array<IPostsInfo> = [];
+    posts.forEach((eachPost) => {
+        const post = eachPost as IPost;
+        const activity = postIdToActivitiesMap[post.id];
+        const postInfo: IPostsInfo = {
+            postId: post.id,
+            createdAt: post.createdAt,
+            updatedAt: post.updatedAt,
+            sourceId: post.sourceId,
+            sourceType: SourceType.USER,
+            contents: post.contents,
+            visibleOnlyToConnections: post.visibleOnlyToConnections,
+            commentsOnlyByConnections: post.commentsOnlyByConnections,
+            postStatus: post.postStatus,
+            postMediaStatus: post.postMediaStatus,
+            activity: activity,
+            sourceActivity: {
+                reaction: sourceReactions?.[post.id]?.reaction,
+                comments: sourceComments?.[post.id],
+            },
+            hashtags: post.hashtags,
+            isBanned: false,
+            isDeleted: false,
+        };
+        relatedUserIds.push(post.sourceId);
+        const taggedUserIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(post));
+        taggedUserIds.forEach((userId) => {
+            relatedUserIds.push(userId);
+        });
+        postsInfo.push(postInfo);
+    });
+
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, relatedUserIds);
+
+    const postsInfoData: IPostsInfoResponse = {
+        postsInfo: postsInfo,
+        relatedSources: [...(relatedUsersRes.data || [])],
+    };
+
+    const response: HttpResponse<IPostsInfoResponse> = {
         success: true,
-        data: postInfo,
+        data: postsInfoData,
+        pagination: pagination,
     };
     reply.status(200).send(response);
 };
@@ -66,27 +116,19 @@ export const getPostsInfo: RequestHandler<{
     }
     const postsActivities = await DB_QUERIES.getActivitiesByResourceIds(postIds, 'post');
     const postIdToActivitiesMap = transformActivitiesListToResourceIdToActivityMap(postsActivities);
-    let sourceReactions: Record<string, IReaction>;
-    let sourceComments: Record<string, Array<ICommentContent>>;
+    let sourceReactions: Record<string, IReaction> | undefined;
+    let sourceComments: Record<string, Array<ICommentContent>> | undefined;
 
     if (userId) {
-        const postReactions = await DB_QUERIES.getReactionsByResourceIdsForSource(userId, postIds, 'post');
-        sourceReactions = transformReactionsListToResourceIdToReactionMap(postReactions);
-
-        const postComments = await DB_QUERIES.getCommentsByResourceIdsForSource(userId, postIds, 'post', 5);
-        sourceComments = transformCommentsListToResourceIdToCommentMap(postComments.documents as Array<IComment>);
+        const sourceActivities = await getSourceActivityForResources(userId, postIds, 'post');
+        sourceReactions = sourceActivities.sourceReactions;
+        sourceComments = sourceActivities.sourceComments;
     }
 
     const relatedUserIds: Array<string> = [];
     const postsInfo: Array<IPostsInfo> = [];
     posts.forEach((post) => {
         const activity = postIdToActivitiesMap[post.id];
-        let sourcePostInfoActivity: IPostInfoSourceActivity | undefined = undefined;
-        const sourcePostReaction = sourceReactions?.[post.id]?.reaction;
-        const sourcePostComments = sourceComments?.[post.id];
-        if (sourcePostReaction || sourcePostComments) {
-            sourcePostInfoActivity = { sourceReaction: sourcePostReaction, sourceComments: sourcePostComments };
-        }
         const postInfo: IPostsInfo = {
             postId: post.id,
             createdAt: post.createdAt,
@@ -96,14 +138,19 @@ export const getPostsInfo: RequestHandler<{
             contents: post.contents,
             visibleOnlyToConnections: post.visibleOnlyToConnections,
             commentsOnlyByConnections: post.commentsOnlyByConnections,
-            reactionsCount: activity.reactions,
-            commentsCount: activity.commentsCount,
-            sourceActivity: sourcePostInfoActivity,
+            activity: activity,
+            postStatus: post.postStatus,
+            postMediaStatus: post.postMediaStatus,
+            sourceActivity: {
+                reaction: sourceReactions?.[post.id]?.reaction,
+                comments: sourceComments?.[post.id],
+            },
             hashtags: post.hashtags,
             isBanned: false,
             isDeleted: false,
         };
 
+        relatedUserIds.push(post.sourceId);
         const taggedUserIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(post));
         taggedUserIds.forEach((userId) => {
             relatedUserIds.push(userId);
@@ -125,6 +172,50 @@ export const getPostsInfo: RequestHandler<{
     reply.status(200).send(response);
 };
 
+export const getPost: RequestHandler<{
+    Params: { postId: string };
+}> = async (request, reply) => {
+    const {
+        params: { postId },
+        authUser,
+    } = request;
+
+    const userId = authUser?.id;
+    const post = await DB_QUERIES.getPostById(postId);
+    if (!post) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
+    const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(post));
+    userIds.push(post.sourceId);
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
+
+    const activity = await DB_QUERIES.getActivityByResource(post.id, 'post');
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
+    let sourceComments: Record<string, ICommentContent[]> | undefined;
+    let sourceReactions: Record<string, IReaction> | undefined;
+    if (userId) {
+        const sourceActivities = await getSourceActivityForResources(userId as string, new Set([postId]), 'post');
+        sourceComments = sourceActivities.sourceComments;
+        sourceReactions = sourceActivities.sourceReactions;
+    }
+
+    const postInfo: IPostResponse = {
+        ...post,
+        activity,
+        sourceActivity: { reaction: sourceReactions?.[post.id]?.reaction, comments: sourceComments?.[post.id] },
+        relatedSources: relatedUsersRes.data || [],
+    };
+    const response: HttpResponse<IPostResponse> = {
+        success: true,
+        data: postInfo,
+    };
+    reply.status(200).send(response);
+};
+
 export const createPost: RequestHandler<{
     Body: ICreatePostRequest;
 }> = async (request, reply) => {
@@ -140,6 +231,8 @@ export const createPost: RequestHandler<{
         visibleOnlyToConnections: body.visibleOnlyToConnections,
         commentsOnlyByConnections: body.commentsOnlyByConnections,
         hashtags: body.hashtags,
+        postStatus: body.postStatus,
+        postMediaStatus: body.postMediaStatus,
     };
     const createdPost = await DB_QUERIES.createPost(post);
     if (!createdPost) {
@@ -150,14 +243,14 @@ export const createPost: RequestHandler<{
         id: v4(),
         resourceId: createdPost.id,
         resourceType: 'post',
-        reactions: {
+        reactionsCount: {
             like: 0,
             support: 0,
             sad: 0,
             love: 0,
             laugh: 0,
         },
-        commentsCount: 0,
+        commentsCount: { comment: 0, subComment: 0 },
         reportInfo: { reportCount: 0, sources: [] },
     });
     if (!createdActivity) {
@@ -176,8 +269,14 @@ export const createPost: RequestHandler<{
     await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
 
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(createdPost));
+    userIds.push(createdPost.sourceId);
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
-    const createdPostInfo: IPostResponse = { ...createdPost, relatedSources: relatedUsersRes.data || [] };
+
+    const createdPostInfo: IPostResponse = {
+        ...createdPost,
+        activity: createdActivity,
+        relatedSources: relatedUsersRes.data || [],
+    };
     const response: HttpResponse<IPostResponse> = {
         success: true,
         data: createdPostInfo,
@@ -213,13 +312,35 @@ export const updatePost: RequestHandler<{
         ...post,
         contents: postContents,
         hashtags: Array.from(new Set([...(post.hashtags || []), ...(body.hashtags || [])])),
+        postStatus: body.postStatus,
+        postMediaStatus: body.postMediaStatus,
     });
     if (!updatedPost) {
         throw new HttpError(ErrorMessage.BadRequest, 400, ErrorCode.BadRequest);
     }
+    const activity = await DB_QUERIES.getActivityByResource(updatedPost.id as string, 'post');
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(updatedPost));
+    userIds.push(updatedPost.sourceId);
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
-    const updatedPostInfo: IPostResponse = { ...updatedPost, relatedSources: relatedUsersRes.data || [] };
+
+    const { sourceReactions, sourceComments } = await getSourceActivityForResources(
+        authUser.id,
+        new Set([postId]),
+        'post'
+    );
+    const updatedPostInfo: IPostResponse = {
+        ...updatedPost,
+        activity: activity,
+        sourceActivity: {
+            reaction: sourceReactions?.[updatedPost.id]?.reaction,
+            comments: sourceComments?.[updatedPost.id],
+        },
+        relatedSources: relatedUsersRes.data || [],
+    };
     const response: HttpResponse<IPostResponse> = {
         success: true,
         data: updatedPostInfo,
@@ -235,7 +356,7 @@ export const deletePost: RequestHandler<{
         authUser,
     } = request;
     const post = await DB_QUERIES.getPostById(postId);
-    if (!post) {
+    if (!post || post.isDeleted) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
     if (authUser?.id != post.sourceId) {
@@ -246,8 +367,9 @@ export const deletePost: RequestHandler<{
         throw new HttpError(ErrorMessage.InternalServerError, 500, ErrorCode.InternalServerError);
     }
     // TODO: Handle deletion of reacts and comments of post
-    const response: HttpResponse = {
+    const response: HttpResponse<IPost> = {
         success: true,
+        data: deletedPost,
     };
     reply.status(200).send(response);
 };
@@ -271,13 +393,6 @@ export const getPostReactions: RequestHandler<{
     const relatedUserIds = new Set<string>();
     paginatedDocuments.documents?.forEach((reaction) => {
         relatedUserIds.add(reaction.sourceId as string);
-        const taggedUserIds = getSourceIdsFromSourceMarkups(
-            SourceType.USER,
-            getSourceMarkupsFromPostOrComment(reaction as IComment)
-        );
-        taggedUserIds.forEach((taggedUserId) => {
-            relatedUserIds.add(taggedUserId);
-        });
     });
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(
         ENV.AUTH_SERVICE_KEY,
@@ -302,6 +417,7 @@ export const getPostComments: RequestHandler<{
     const {
         params: { postId },
         query: { limit, nextSearchStartFromKey },
+        authUser,
     } = request;
     const paginatedDocuments = await DB_QUERIES.getCommentsForResource(
         'post',
@@ -311,8 +427,10 @@ export const getPostComments: RequestHandler<{
     );
 
     const comments = paginatedDocuments.documents;
+    const commentIds: Set<string> = new Set();
     const relatedUserIds = new Set<string>();
     comments?.forEach((comment) => {
+        commentIds.add(comment.id as string);
         relatedUserIds.add(comment.sourceId as string);
 
         const taggedUserIds = getSourceIdsFromSourceMarkups(
@@ -324,13 +442,26 @@ export const getPostComments: RequestHandler<{
         });
     });
 
+    const activities = await DB_QUERIES.getActivitiesByResourceIds(commentIds, 'comment');
+
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(
         ENV.AUTH_SERVICE_KEY,
         Array.from(relatedUserIds)
     );
 
+    const { sourceReactions } = await getSourceActivityForResources(authUser?.id as string, commentIds, 'comment');
+
+    const commentsWithActivity: ICommentApiModel[] | undefined = comments?.map((comment) => {
+        const activity = activities.find((act) => act.resourceId === comment.id);
+        return {
+            ...(comment as IComment),
+            sourceActivity: { reaction: sourceReactions?.[(comment as IComment).id]?.reaction },
+            activity: activity as IActivity,
+        };
+    });
+
     const postComments: IPostCommentsResponse = {
-        comments: comments as IComment[],
+        comments: commentsWithActivity || [],
         relatedSources: [...(relatedUsersRes.data || [])],
     };
 
@@ -369,6 +500,10 @@ export const postBanPost: RequestHandler<{
     // TODO: Check if authorized user is performing ban operation
     const bannedPost = await DB_QUERIES.updatePost(postId, { isBanned: true });
     const postActivity = await DB_QUERIES.getActivityByResource(postId, 'post');
+    if (!postActivity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
     await DB_QUERIES.updateActivity(postActivity.resourceId, postActivity.resourceType, {
         banInfo: { sourceId: authUser.id, sourceType: SourceType.USER, banReason: body.banReason },
     });
@@ -393,9 +528,14 @@ export const postReportPost: RequestHandler<{
     }
     // TODO: Check if authorized user is performing report operation
     const postActivity = await DB_QUERIES.getActivityByResource(postId, 'post');
+    if (!postActivity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
     if (postActivity.reportInfo.sources.find((source) => source.sourceId === authUser.id)) {
         throw new HttpError(ErrorMessage.ReportAlreadyReportedBySource, 400, ErrorCode.RedundantRequest);
     }
+
     const reportedActivity = await DB_QUERIES.updateActivity(postActivity.resourceId, postActivity.resourceType, {
         reportInfo: {
             reportCount: postActivity.reportInfo.reportCount + 1,

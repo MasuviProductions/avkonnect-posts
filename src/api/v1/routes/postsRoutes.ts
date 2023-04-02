@@ -8,6 +8,7 @@ import {
     updatePost,
     getPostComments,
     getPostsInfo,
+    getUsersPosts,
     getPostActivity,
     postBanPost,
     postReportPost,
@@ -26,6 +27,7 @@ const initializePostsRoutes = (
     fastify.delete('/posts/:postId', { preHandler: [authHandler] }, deletePost);
     fastify.get('/posts/:postId/reactions', { preHandler: [authHandler] }, getPostReactions);
     fastify.get('/posts/:postId/comments', { preHandler: [authHandler] }, getPostComments);
+    fastify.get('/users/:userId/posts', { preHandler: [authHandler] }, getUsersPosts);
     fastify.post('/posts/:postId/ban', { preHandler: [authHandler] }, postBanPost);
     fastify.post('/posts/:postId/report', { preHandler: [authHandler] }, postReportPost);
 

@@ -13,22 +13,94 @@ import {
     ICommentResponse,
     ICommentCommentsResponse,
     ICommentActivityResponse,
+    ICommentApiModel,
+    ICommentReactionResponse,
+    IRootPostInfoForComment,
 } from '../../../interfaces/app';
-import { IActivity } from '../../../models/activities';
+import { IActivity, ICommentCountType } from '../../../models/activities';
 import { IComment, ICommentContent } from '../../../models/comments';
+import { IReaction, IReactionType, IResourceType } from '../../../models/reactions';
 import { SourceType } from '../../../models/shared';
 import AVKKONNECT_CORE_SERVICE from '../../../services/avkonnect-core';
-import { getResourceBasedOnResourceType, isResouceAComment } from '../../../utils/db/generic';
+import {
+    getResourceBasedOnResourceType,
+    getSourceActivityForResources,
+    isResouceAComment,
+} from '../../../utils/db/generic';
 import DB_QUERIES from '../../../utils/db/queries';
 import { HttpError } from '../../../utils/error';
 import { getSourceIdsFromSourceMarkups, getSourceMarkupsFromPostOrComment } from '../../../utils/generic';
 import SQS_QUEUE from '../../../utils/queue';
+
+const incrementCommentCountInActivity = async (
+    resourceId: string,
+    resourceType: IResourceType,
+    commentType: ICommentCountType,
+    incrementValue: number
+) => {
+    const activity = await DB_QUERIES.getActivityByResource(resourceId, resourceType);
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
+    const updatedActivityForResource: Partial<Pick<IActivity, 'commentsCount' | 'reactionsCount'>> = {
+        commentsCount: {
+            ...activity.commentsCount,
+            [commentType]: activity.commentsCount[commentType] + incrementValue,
+        },
+    };
+    const updatedActivityForComment = await DB_QUERIES.updateActivity(
+        activity.resourceId,
+        activity.resourceType,
+        updatedActivityForResource
+    );
+
+    if (!updatedActivityForComment) {
+        throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
+    }
+};
+
+export const getRootPostInfoForComment: RequestHandler<{
+    Params: { commentId: string };
+}> = async (request, reply) => {
+    const { params } = request;
+    const commentId = params.commentId;
+    const comment = await DB_QUERIES.getCommentById(commentId);
+    if (!comment) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
+    let postId: string | undefined;
+    if (comment.resourceType === 'comment') {
+        const parentComment = await DB_QUERIES.getCommentById(comment.resourceId);
+        if (!parentComment) {
+            throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+        }
+        postId = parentComment.resourceId;
+    } else {
+        postId = comment.resourceId;
+    }
+
+    const response: HttpResponse<IRootPostInfoForComment> = {
+        success: true,
+        data: {
+            postId,
+        },
+    };
+    reply.status(200).send(response);
+};
 
 export const createComment: RequestHandler<{
     Body: ICreateCommentRequest;
 }> = async (request, reply) => {
     const { authUser, body } = request;
     const resource = await getResourceBasedOnResourceType(body.resourceType, body.resourceId);
+
+    if (isResouceAComment(resource)) {
+        if (resource.resourceType === 'comment') {
+            throw new HttpError(ErrorMessage.CommentCreationDepthError, 400, ErrorCode.CreationError);
+        }
+    }
 
     const currentTime = Date.now();
     const comment: IComment = {
@@ -39,6 +111,9 @@ export const createComment: RequestHandler<{
         resourceId: body.resourceId,
         resourceType: body.resourceType,
         contents: [{ ...body.comment, createdAt: new Date(currentTime) }],
+        hashtags: [],
+        commentStatus: body.commentStatus,
+        commentMediaStatus: body.commentMediaStatus,
         isBanned: false,
         isDeleted: false,
     };
@@ -51,25 +126,25 @@ export const createComment: RequestHandler<{
         id: v4(),
         resourceId: createdComment.id,
         resourceType: 'comment',
-        reactions: {
+        reactionsCount: {
             like: 0,
             support: 0,
             sad: 0,
             love: 0,
             laugh: 0,
         },
-        commentsCount: 0,
+        commentsCount: { comment: 0, subComment: 0 },
         reportInfo: { reportCount: 0, sources: [] },
     });
 
-    const activity = await DB_QUERIES.getActivityByResource(body.resourceId, body.resourceType);
-    const updatedActivityForResource: Partial<Pick<IActivity, 'commentsCount' | 'reactions'>> = {
-        commentsCount: activity.commentsCount + 1,
-    };
-    await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivityForResource);
-
     if (!createdActivityForComment) {
         throw new HttpError(ErrorMessage.CreationError, 400, ErrorCode.CreationError);
+    }
+
+    await incrementCommentCountInActivity(body.resourceId, body.resourceType, 'comment', 1);
+    if (isResouceAComment(resource)) {
+        // Update comment count for parent post
+        await incrementCommentCountInActivity(resource.resourceId, resource.resourceType, 'subComment', 1);
     }
 
     // NOTE: This comment is added to connections'/followers' feeds
@@ -84,36 +159,40 @@ export const createComment: RequestHandler<{
     };
     await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
 
-    // NOTE: Notify the owner of the post regarding reactions
-    let notificationActivity: INotificationActivity;
-    if (isResouceAComment(resource)) {
-        notificationActivity = {
-            resourceId: resource?.id,
-            resourceType: 'comment',
-            resourceActivity: 'commentComment',
-            sourceId: authUser?.id as string,
-            sourceType: SourceType.USER,
+    // NOTE: Notify the owner of the post regarding comments
+    if (resource.sourceId != authUser?.id) {
+        let notificationActivity: INotificationActivity;
+        if (isResouceAComment(resource)) {
+            notificationActivity = {
+                resourceId: resource?.id,
+                resourceType: 'comment',
+                resourceActivity: 'commentComment',
+                sourceId: authUser?.id as string,
+                sourceType: SourceType.USER,
+            };
+        } else {
+            notificationActivity = {
+                resourceId: resource?.id,
+                resourceType: 'post',
+                resourceActivity: 'postComment',
+                sourceId: authUser?.id as string,
+                sourceType: SourceType.USER,
+            };
+        }
+
+        const notificationQueueParams: SQS.SendMessageRequest = {
+            MessageBody: JSON.stringify(notificationActivity),
+            QueueUrl: ENV.AWS.NOTIFICATIONS_SQS_URL,
         };
-    } else {
-        notificationActivity = {
-            resourceId: resource?.id,
-            resourceType: 'post',
-            resourceActivity: 'postComment',
-            sourceId: authUser?.id as string,
-            sourceType: SourceType.USER,
-        };
+        await SQS_QUEUE.sendMessage(notificationQueueParams).promise();
     }
 
-    const notificationQueueParams: SQS.SendMessageRequest = {
-        MessageBody: JSON.stringify(notificationActivity),
-        QueueUrl: ENV.AWS.NOTIFICATIONS_SQS_URL,
-    };
-    await SQS_QUEUE.sendMessage(notificationQueueParams).promise();
-
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(createdComment));
+    userIds.push(createdComment.sourceId);
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
     const createdCommentInfo: ICommentResponse = {
         ...createdComment,
+        activity: createdActivityForComment,
         relatedSources: [...(relatedUsersRes.data || [])],
     };
     const response: HttpResponse<ICommentResponse> = {
@@ -128,15 +207,32 @@ export const getComment: RequestHandler<{
 }> = async (request, reply) => {
     const {
         params: { commentId },
+        authUser,
     } = request;
+    const userId = authUser?.id;
     const comment = await DB_QUERIES.getCommentById(commentId);
     if (!comment) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
+    const activity = await DB_QUERIES.getActivityByResource(comment.id, 'comment');
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(comment));
+    userIds.push(comment.sourceId);
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
+
+    let sourceReactions: Record<string, IReaction> | undefined;
+    if (userId) {
+        const sourceActivities = await getSourceActivityForResources(userId, new Set([comment.id]), 'comment');
+        sourceReactions = sourceActivities.sourceReactions;
+    }
+
     const commentInfo: ICommentResponse = {
         ...comment,
+        activity,
+        sourceActivity: { reaction: sourceReactions?.[comment.id]?.reaction },
         relatedSources: [...(relatedUsersRes.data || [])],
     };
     const response: HttpResponse<ICommentResponse> = {
@@ -165,14 +261,31 @@ export const updateComment: RequestHandler<{
     const newCommentContent: ICommentContent = { ...body.comment, createdAt: new Date(Date.now()) };
     const updatedComment = await DB_QUERIES.updateComment(comment.sourceId, comment.createdAt, {
         contents: [...comment.contents, newCommentContent],
+        commentMediaStatus: body.commentMediaStatus,
+        commentStatus: body.commentStatus,
     });
     if (!updatedComment) {
         throw new HttpError(ErrorMessage.BadRequest, 400, ErrorCode.BadRequest);
     }
+    const activity = await DB_QUERIES.getActivityByResource(comment.id, 'comment');
+    if (!activity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
     const userIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(updatedComment));
+    userIds.push(updatedComment.sourceId);
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, userIds);
+
+    const { sourceReactions } = await getSourceActivityForResources(
+        authUser?.id as string,
+        new Set([comment.id]),
+        'comment'
+    );
+
     const updatedCommentInfo: ICommentResponse = {
         ...updatedComment,
+        activity,
+        sourceActivity: { reaction: sourceReactions?.[updatedComment.id]?.reaction },
         relatedSources: [...(relatedUsersRes.data || [])],
     };
     const response: HttpResponse<ICommentResponse> = {
@@ -190,35 +303,40 @@ export const deleteComment: RequestHandler<{
         authUser,
     } = request;
     const comment = await DB_QUERIES.getCommentById(commentId);
-    if (!comment) {
+    if (!comment || comment.isDeleted) {
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
+
+    const resource = await getResourceBasedOnResourceType(comment.resourceType, comment.resourceId);
+
     if (authUser?.id != comment.sourceId) {
-        if (comment.resourceType === 'comment') {
-            const parentComment = await DB_QUERIES.getCommentById(comment.resourceId);
-            if (authUser?.id !== parentComment?.sourceId) {
-                throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
-            }
-        } else if (comment.resourceType === 'post') {
-            const parentPost = await DB_QUERIES.getPostById(comment.resourceId);
-            if (authUser?.id !== parentPost?.sourceId) {
-                throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
-            }
-        } else {
+        if (authUser?.id !== resource?.sourceId) {
             throw new HttpError(ErrorMessage.AuthorizationError, 403, ErrorCode.AuthorizationError);
         }
     }
-    await DB_QUERIES.deleteComment(comment.sourceId, comment.createdAt);
 
-    const activity = await DB_QUERIES.getActivityByResource(comment.resourceId, comment.resourceType);
-    const updatedActivityForResource: Partial<Pick<IActivity, 'commentsCount' | 'reactions'>> = {
-        commentsCount: activity.commentsCount - 1,
-    };
-    await DB_QUERIES.updateActivity(activity.resourceId, activity.resourceType, updatedActivityForResource);
+    const deletedComment = await DB_QUERIES.deleteComment(comment.sourceId, comment.createdAt);
+
+    await incrementCommentCountInActivity(comment.resourceId, comment.resourceType, 'comment', -1);
+
+    if (isResouceAComment(resource)) {
+        await incrementCommentCountInActivity(resource.resourceId, resource.resourceType, 'subComment', -1);
+    } else {
+        const commentActivity = await DB_QUERIES.getActivityByResource(comment.id, 'comment');
+        if (commentActivity && commentActivity?.commentsCount.comment > 0) {
+            await incrementCommentCountInActivity(
+                resource.id,
+                'post',
+                'subComment',
+                -1 * commentActivity.commentsCount.comment
+            );
+        }
+    }
 
     // TODO: Handle deletion of reacts and comments of comment
-    const response: HttpResponse = {
+    const response: HttpResponse<IComment> = {
         success: true,
+        data: deletedComment,
     };
     reply.status(200).send(response);
 };
@@ -230,6 +348,7 @@ export const getCommentComments: RequestHandler<{
     const {
         params: { commentId },
         query: { limit, nextSearchStartFromKey },
+        authUser,
     } = request;
     const paginatedDocuments = await DB_QUERIES.getCommentsForResource(
         'comment',
@@ -239,8 +358,10 @@ export const getCommentComments: RequestHandler<{
     );
 
     const comments = paginatedDocuments.documents;
+    const commentIds: Set<string> = new Set();
     const relatedUserIds = new Set<string>();
     comments?.forEach((comment) => {
+        commentIds.add(comment.id as string);
         relatedUserIds.add(comment.sourceId as string);
 
         const taggedUserIds = getSourceIdsFromSourceMarkups(
@@ -251,14 +372,26 @@ export const getCommentComments: RequestHandler<{
             relatedUserIds.add(taggedUserId);
         });
     });
+    const activities = await DB_QUERIES.getActivitiesByResourceIds(commentIds, 'comment');
 
     const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(
         ENV.AUTH_SERVICE_KEY,
         Array.from(relatedUserIds)
     );
 
+    const { sourceReactions } = await getSourceActivityForResources(authUser?.id as string, commentIds, 'comment');
+
+    const commentsWithActivity: ICommentApiModel[] | undefined = comments?.map((comment) => {
+        const activity = activities.find((act) => act.resourceId === comment.id);
+        return {
+            ...(comment as IComment),
+            sourceActivity: { reaction: sourceReactions?.[(comment as IComment).id]?.reaction },
+            activity: activity as IActivity,
+        };
+    });
+
     const commentsInfo: ICommentCommentsResponse = {
-        comments: comments as IComment[],
+        comments: commentsWithActivity || [],
         relatedSources: [...(relatedUsersRes.data || [])],
     };
 
@@ -275,9 +408,48 @@ export const getCommentActivity: RequestHandler<{
 }> = async (request, reply) => {
     const { commentId } = request.params;
     const commentActivity = await DB_QUERIES.getActivityByResource(commentId, 'comment');
+    if (!commentActivity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
     const response: HttpResponse<ICommentActivityResponse> = {
         success: true,
         data: commentActivity,
+    };
+    reply.status(200).send(response);
+};
+
+export const getCommentReactions: RequestHandler<{
+    Params: { commentId: string };
+    Querystring: { reaction: IReactionType; limit: number; nextSearchStartFromKey: string };
+}> = async (request, reply) => {
+    const {
+        params: { commentId },
+        query: { reaction, limit, nextSearchStartFromKey },
+    } = request;
+    const paginatedDocuments = await DB_QUERIES.getReactionsForResource(
+        'comment',
+        commentId,
+        reaction,
+        limit,
+        nextSearchStartFromKey ? (JSON.parse(decodeURI(nextSearchStartFromKey)) as ObjectType) : undefined
+    );
+    const reactions = paginatedDocuments.documents as IReaction[];
+    const relatedUserIds = new Set<string>();
+    paginatedDocuments.documents?.forEach((reaction) => {
+        relatedUserIds.add(reaction.sourceId as string);
+    });
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(
+        ENV.AUTH_SERVICE_KEY,
+        Array.from(relatedUserIds)
+    );
+    const postReactions: ICommentReactionResponse = {
+        reactions: reactions,
+        relatedSources: [...(relatedUsersRes.data || [])],
+    };
+    const response: HttpResponse<ICommentReactionResponse> = {
+        success: true,
+        data: postReactions,
+        dDBPagination: paginatedDocuments.dDBPagination,
     };
     reply.status(200).send(response);
 };
@@ -301,8 +473,12 @@ export const postBanComment: RequestHandler<{
         throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
     }
     const bannedPost = await DB_QUERIES.updateComment(comment.sourceId, comment.createdAt, { isBanned: true });
-    const postActivity = await DB_QUERIES.getActivityByResource(commentId, 'comment');
-    await DB_QUERIES.updateActivity(postActivity.resourceId, postActivity.resourceType, {
+    const commentActivity = await DB_QUERIES.getActivityByResource(commentId, 'comment');
+    if (!commentActivity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
+    await DB_QUERIES.updateActivity(commentActivity.resourceId, commentActivity.resourceType, {
         banInfo: { sourceId: authUser.id, sourceType: SourceType.USER, banReason: body.banReason },
     });
     const response: HttpResponse<IComment> = {
@@ -326,6 +502,10 @@ export const postReportComment: RequestHandler<{
     }
     // TODO: Check if authorized user is performing report operation
     const commentActivity = await DB_QUERIES.getActivityByResource(commentId, 'comment');
+    if (!commentActivity) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+
     if (commentActivity.reportInfo.sources.find((source) => source.sourceId === authUser.id)) {
         throw new HttpError(ErrorMessage.ReportAlreadyReportedBySource, 400, ErrorCode.RedundantRequest);
     }
