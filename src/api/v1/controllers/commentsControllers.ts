@@ -95,7 +95,6 @@ export const createComment: RequestHandler<{
 }> = async (request, reply) => {
     const { authUser, body } = request;
     const resource = await getResourceBasedOnResourceType(body.resourceType, body.resourceId);
-
     if (isResouceAComment(resource)) {
         if (resource.resourceType === 'comment') {
             throw new HttpError(ErrorMessage.CommentCreationDepthError, 400, ErrorCode.CreationError);
@@ -158,6 +157,19 @@ export const createComment: RequestHandler<{
         QueueUrl: ENV.AWS.FEEDS_SQS_URL,
     };
     await SQS_QUEUE.sendMessage(feedsQueueParams).promise();
+
+    const feedsComputeComment: IFeedsSQSEventRecord = {
+        eventType: 'computeTrendingPostScore',
+        resourceId: createdComment.id,
+        resourceType: 'comment',
+    };
+
+    const computeQueueParams: SQS.SendMessageRequest = {
+        MessageBody: JSON.stringify(feedsComputeComment),
+        QueueUrl: ENV.AWS.FEEDS_SQS_URL,
+    };
+
+    await SQS_QUEUE.sendMessage(computeQueueParams).promise();
 
     // NOTE: Notify the owner of the post regarding comments
     if (resource.sourceId != authUser?.id) {

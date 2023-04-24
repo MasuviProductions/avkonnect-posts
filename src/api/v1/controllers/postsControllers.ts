@@ -374,6 +374,87 @@ export const deletePost: RequestHandler<{
     reply.status(200).send(response);
 };
 
+export const getTrendingPosts: RequestHandler<{
+    Params: { postId: string };
+}> = async (request, reply) => {
+    const postId = request.params.postId;
+    // console.log('here: __________________------>');
+    const reactions = await DB_QUERIES.getTrendingPostData(postId, 'post');
+    const response: HttpResponse = {
+        success: true,
+        data: reactions,
+    };
+    reply.status(200).send(response);
+};
+
+export const getTrendingPostsInfo: RequestHandler<{
+    //delete
+    Body: IPostsInfoRequest;
+}> = async (request, reply) => {
+    const { body } = request;
+    // console.log('came here: ', body);
+    const postIds = new Set(body.postIds);
+    const posts = await DB_QUERIES.getPostsByIds(postIds);
+    const userId = posts[0].sourceId;
+    if (!posts) {
+        throw new HttpError(ErrorMessage.NotFound, 404, ErrorCode.NotFound);
+    }
+    const postsActivities = await DB_QUERIES.getActivitiesByResourceIds(postIds, 'post');
+    const postIdToActivitiesMap = transformActivitiesListToResourceIdToActivityMap(postsActivities);
+    let sourceReactions: Record<string, IReaction> | undefined;
+    let sourceComments: Record<string, Array<ICommentContent>> | undefined;
+
+    if (userId) {
+        const sourceActivities = await getSourceActivityForResources(userId, postIds, 'post');
+        sourceReactions = sourceActivities.sourceReactions;
+        sourceComments = sourceActivities.sourceComments;
+    }
+
+    const relatedUserIds: Array<string> = [];
+    const postsInfo: Array<IPostsInfo> = [];
+    posts.forEach((post) => {
+        const activity = postIdToActivitiesMap[post.id];
+        const postInfo: IPostsInfo = {
+            postId: post.id,
+            createdAt: post.createdAt,
+            updatedAt: post.updatedAt,
+            sourceId: post.sourceId,
+            sourceType: SourceType.USER,
+            contents: post.contents,
+            visibleOnlyToConnections: post.visibleOnlyToConnections,
+            commentsOnlyByConnections: post.commentsOnlyByConnections,
+            activity: activity,
+            sourceActivity: {
+                reaction: sourceReactions?.[post.id]?.reaction,
+                comments: sourceComments?.[post.id],
+            },
+            hashtags: post.hashtags,
+            isBanned: false,
+            isDeleted: false,
+        };
+
+        relatedUserIds.push(post.sourceId);
+        const taggedUserIds = getSourceIdsFromSourceMarkups(SourceType.USER, getSourceMarkupsFromPostOrComment(post));
+        taggedUserIds.forEach((userId) => {
+            relatedUserIds.push(userId);
+        });
+        postsInfo.push(postInfo);
+    });
+
+    const relatedUsersRes = await AVKKONNECT_CORE_SERVICE.getUsersInfo(ENV.AUTH_SERVICE_KEY, relatedUserIds);
+
+    const postsInfoData: IPostsInfoResponse = {
+        postsInfo: postsInfo,
+        relatedSources: [...(relatedUsersRes.data || [])],
+    };
+
+    const response: HttpResponse<IPostsInfoResponse> = {
+        success: true,
+        data: postsInfoData,
+    };
+    reply.status(200).send(response);
+};
+
 export const getPostReactions: RequestHandler<{
     Params: { postId: string };
     Querystring: { reaction: IReactionType; limit: number; nextSearchStartFromKey: string };
