@@ -63,9 +63,9 @@ export interface HttpResponse<T = unknown> {
 export type IDynamooseDocument<T> = T & Document;
 
 export interface IFeedsSQSEventRecord {
-    eventType: 'generateFeeds';
+    eventType: 'generateFeeds' | 'computeTrendingPostScore';
     resourceId: string;
-    resourceType: 'post' | 'comment' | 'reaction';
+    resourceType: 'post' | 'comment' | 'subComment' | 'reaction' | 'like' | 'laugh' | 'sad' | 'love' | 'support';
 }
 
 export interface ICreateReactionRequest {
